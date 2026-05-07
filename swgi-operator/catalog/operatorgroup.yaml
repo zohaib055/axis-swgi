@@ -1,0 +1,8 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: swgi-operator-group
+  namespace: swgi-system
+spec:
+  targetNamespaces:
+    - swgi-system

@@ -1,0 +1,157 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: swgi-openshift.v0.1.0
+  namespace: placeholder
+  annotations:
+    alm-examples: "[]"
+    capabilities: Basic Install
+    categories: Security,Developer Tools
+    certified: "false"
+    containerImage: registry.connect.redhat.com/axissystems/swgi-core:0.1.0
+    createdAt: "2026-03-18T00:00:00Z"
+    description: SWGI OpenShift authorization API bundle for Red Hat Connect certification testing.
+    operators.openshift.io/infrastructure-features: '["disconnected"]'
+    operators.operatorframework.io/builder: operator-sdk-v1.38.0
+    repository: https://github.com/AxisTradeMarket/axis-swgi-openshift
+    support: SWGI
+spec:
+  displayName: SWGI OpenShift
+  description: |
+    SWGI OpenShift provides a FastAPI-based authorization service built on swgi_core.
+    The current bundle deploys the API with SQLite-backed receipt persistence and
+    token-based access control for validation and certification workflows.
+  version: 0.1.0
+  maturity: alpha
+  provider:
+    name: SWGI
+  maintainers:
+    - name: SWGI
+      email: support@example.com
+  links:
+    - name: Source Code
+      url: https://github.com/AxisTradeMarket/axis-swgi-openshift
+  keywords:
+    - swgi
+    - openshift
+    - authorization
+  minKubeVersion: 1.27.0
+  installModes:
+    - type: OwnNamespace
+      supported: true
+    - type: SingleNamespace
+      supported: true
+    - type: MultiNamespace
+      supported: false
+    - type: AllNamespaces
+      supported: false
+  cleanup:
+    enabled: false
+  install:
+    strategy: deployment
+    spec:
+      permissions:
+        - serviceAccountName: swgi-openshift
+          rules:
+            - apiGroups: [""]
+              resources: ["configmaps", "secrets"]
+              verbs: ["get"]
+      deployments:
+        - name: swgi-openshift
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: swgi-openshift
+            template:
+              metadata:
+                labels:
+                  app: swgi-openshift
+              spec:
+                serviceAccountName: swgi-openshift
+                securityContext:
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: swgi-openshift
+                    image: registry.connect.redhat.com/axissystems/swgi-core:0.1.0
+                    imagePullPolicy: IfNotPresent
+                    ports:
+                      - containerPort: 8080
+                        name: http
+                    env:
+                      - name: SWGI_MODE
+                        value: production
+                      - name: HOST
+                        value: 0.0.0.0
+                      - name: PORT
+                        value: "8080"
+                      - name: LOG_LEVEL
+                        value: INFO
+                      - name: LOG_FORMAT
+                        value: json
+                      - name: SWGI_ORG_ID
+                        value: org-prod
+                      - name: SWGI_NODE_ID
+                        value: fen-ocp-001
+                      - name: POLICY_PATH
+                        value: /opt/app-root/src/swgi-openshift/data/input/policy.json
+                      - name: SIGNING_KEY_PATH
+                        value: /tmp/secrets/signing_key_ed25519.pem
+                      - name: RECEIPT_STORE_BACKEND
+                        value: sqlite
+                      - name: RECEIPT_DB_PATH
+                        value: /tmp/swgi/receipts.db
+                      - name: RUN_DB_MIGRATIONS
+                        value: "true"
+                      - name: TLS_ENABLED
+                        value: "false"
+                      - name: METRICS_ENABLED
+                        value: "true"
+                      - name: ADMIN_API_TOKEN
+                        valueFrom:
+                          secretKeyRef:
+                            name: swgi-openshift
+                            key: ADMIN_API_TOKEN
+                      - name: VIEWER_API_TOKEN
+                        valueFrom:
+                          secretKeyRef:
+                            name: swgi-openshift
+                            key: VIEWER_API_TOKEN
+                    volumeMounts:
+                      - name: signing-key
+                        mountPath: /tmp/secrets
+                        readOnly: true
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: 8080
+                    readinessProbe:
+                      httpGet:
+                        path: /v1/health
+                        port: 8080
+                    resources:
+                      requests:
+                        cpu: 100m
+                        memory: 128Mi
+                      limits:
+                        cpu: 500m
+                        memory: 512Mi
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop: ["ALL"]
+                      runAsNonRoot: true
+                      runAsUser: 10001
+                volumes:
+                  - name: signing-key
+                    secret:
+                      secretName: swgi-openshift
+                      items:
+                        - key: signing_key_ed25519.pem
+                          path: signing_key_ed25519.pem
+  customresourcedefinitions: {}
+  relatedImages:
+    - name: swgi-openshift
+      image: registry.connect.redhat.com/axissystems/swgi-core:0.1.0

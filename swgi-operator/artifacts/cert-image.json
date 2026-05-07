@@ -1,0 +1,76 @@
+{
+    "certified": false,
+    "deleted": false,
+    "docker_image_digest": "sha256:1e88f97ea139cbb45ae92a9e81dbd7997f548ef022dfeef44d22ba1b3524daca",
+    "docker_image_id": "sha256:e3764e6a4333d9c16005da645d4afb64616a2c662d0dc330581849a12a2d428f",
+    "image_id": "sha256:1e88f97ea139cbb45ae92a9e81dbd7997f548ef022dfeef44d22ba1b3524daca",
+    "parsed_data": {
+        "architecture": "arm64",
+        "created": "2026-03-30 09:32:47.675854203 +0000 UTC",
+        "image_id": "sha256:1e88f97ea139cbb45ae92a9e81dbd7997f548ef022dfeef44d22ba1b3524daca",
+        "labels": [
+            {
+                "name": "io.buildah.version",
+                "value": "1.43.0"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.channel.default.v1",
+                "value": "stable"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.channels.v1",
+                "value": "alpha,stable"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.manifests.v1",
+                "value": "manifests/"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.mediatype.v1",
+                "value": "registry+v1"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.metadata.v1",
+                "value": "metadata/"
+            },
+            {
+                "name": "operators.operatorframework.io.bundle.package.v1",
+                "value": "axis-swgi-operator"
+            }
+        ],
+        "layers": [
+            "sha256:e710f034d140e2943a7f4a02356674ab0ef29d0aaacaf1535640e3855268baf0",
+            "sha256:10ba1928a25b58f42d0c732029f95f074a1c450954eac6c8979488c9a80e294c"
+        ],
+        "os": "linux",
+        "size": 723,
+        "uncompressed_layer_sizes": [
+            {
+                "layer_id": "sha256:8f4320af2c5af7ebe23d0d13d9dd069ab7a9856e1bf8b6eb7577782d6adf8c9d",
+                "size_bytes": 11264
+            },
+            {
+                "layer_id": "sha256:35049f964004f486767cc1f3c5d40d604d6b3643fe5ba300d5ab487936fc8854",
+                "size_bytes": 2560
+            }
+        ]
+    },
+    "architecture": "arm64",
+    "raw_config": "{\"created\":\"2026-03-30T09:32:47.675854203Z\",\"architecture\":\"arm64\",\"os\":\"linux\",\"variant\":\"v8\",\"config\":{\"Env\":[\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"],\"WorkingDir\":\"/\",\"Labels\":{\"io.buildah.version\":\"1.43.0\",\"operators.operatorframework.io.bundle.channel.default.v1\":\"stable\",\"operators.operatorframework.io.bundle.channels.v1\":\"alpha,stable\",\"operators.operatorframework.io.bundle.manifests.v1\":\"manifests/\",\"operators.operatorframework.io.bundle.mediatype.v1\":\"registry+v1\",\"operators.operatorframework.io.bundle.metadata.v1\":\"metadata/\",\"operators.operatorframework.io.bundle.package.v1\":\"axis-swgi-operator\"}},\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[\"sha256:8f4320af2c5af7ebe23d0d13d9dd069ab7a9856e1bf8b6eb7577782d6adf8c9d\",\"sha256:35049f964004f486767cc1f3c5d40d604d6b3643fe5ba300d5ab487936fc8854\"]},\"history\":[{\"created\":\"2026-03-30T06:58:31.428739023Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL operators.operatorframework.io.bundle.package.v1=\\\"axis-swgi-operator\\\"       operators.operatorframework.io.bundle.channels.v1=\\\"alpha,stable\\\"       operators.operatorframework.io.bundle.channel.default.v1=\\\"stable\\\"       operators.operatorframework.io.bundle.manifests.v1=\\\"manifests/\\\"       operators.operatorframework.io.bundle.metadata.v1=\\\"metadata/\\\"       operators.operatorframework.io.bundle.mediatype.v1=\\\"registry+v1\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-30T09:32:47.389588727Z\",\"created_by\":\"/bin/sh -c #(nop) COPY dir:f2dafa9b7461ed7abd6963f86ace2293e02f5fb93a3af4ae46322fa87c6d70e5 in /manifests/      \"},{\"created\":\"2026-03-30T09:32:47.676203705Z\",\"created_by\":\"/bin/sh -c #(nop) COPY dir:a48edaf33655af45e2fafc5ab5510f7be9c46eb0b0d87217d8927b58175dd90f in /metadata/      \"}]}",
+    "repositories": [
+        {
+            "published": false,
+            "push_date": "2026-03-30T20:57:50Z",
+            "registry": "quay.io",
+            "repository": "axis919/axis-swgi-operator-bundle",
+            "tags": [
+                {
+                    "added_date": "2026-03-30T20:57:50Z",
+                    "name": "0.1.0"
+                }
+            ]
+        }
+    ],
+    "sum_layer_size_bytes": 13824,
+    "uncompressed_top_layer_id": "sha256:8f4320af2c5af7ebe23d0d13d9dd069ab7a9856e1bf8b6eb7577782d6adf8c9d"
+}

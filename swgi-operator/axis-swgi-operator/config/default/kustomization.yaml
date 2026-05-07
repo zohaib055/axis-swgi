@@ -1,0 +1,6 @@
+resources:
+  - ../crd/bases/swgi.io_swgideployments.yaml
+  - ../rbac/service_account.yaml
+  - ../rbac/cluster_role.yaml
+  - ../rbac/cluster_role_binding.yaml
+  - ../manager/deployment.yaml

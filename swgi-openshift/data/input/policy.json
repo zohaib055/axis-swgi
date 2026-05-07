@@ -1,0 +1,17 @@
+{
+  "policy_id": "policy.v1.openshift",
+  "default": "DENY",
+  "integrity_labels": {
+    "ALLOW": "HIGH",
+    "DENY": "LOW"
+  },
+  "rules": [
+    {
+      "action": "ai.infer",
+      "intent": "ALLOW_IF",
+      "allow_if": {
+        "authority_role_in": ["admin"]
+      }
+    }
+  ]
+}

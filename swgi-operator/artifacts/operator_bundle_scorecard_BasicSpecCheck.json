@@ -1,0 +1,35 @@
+{
+  "kind": "TestList",
+  "apiVersion": "scorecard.operatorframework.io/v1alpha3",
+  "items": [
+    {
+      "kind": "Test",
+      "apiVersion": "scorecard.operatorframework.io/v1alpha3",
+      "spec": {
+        "image": "quay.io/operator-framework/scorecard-test:v1.40.0",
+        "entrypoint": [
+          "scorecard-test",
+          "basic-check-spec"
+        ],
+        "labels": {
+          "suite": "basic",
+          "test": "basic-check-spec-test"
+        },
+        "storage": {
+          "spec": {
+            "mountPath": {}
+          }
+        }
+      },
+      "status": {
+        "results": [
+          {
+            "name": "basic-check-spec",
+            "state": "pass",
+            "creationTimestamp": null
+          }
+        ]
+      }
+    }
+  ]
+}

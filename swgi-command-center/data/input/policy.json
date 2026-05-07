@@ -1,0 +1,24 @@
+{
+  "policy_id": "policy.v1.kubernetes-governance",
+  "default": "DENY",
+  "integrity_labels": {
+    "ALLOW": "HIGH",
+    "DENY": "LOW"
+  },
+  "rules": [
+    {
+      "action": "kubernetes.apply",
+      "intent": "ALLOW_IF",
+      "allow_if": {
+        "authority_role_in": ["admin"]
+      }
+    },
+    {
+      "action": "ai.infer",
+      "intent": "ALLOW_IF",
+      "allow_if": {
+        "authority_role_in": ["admin"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "swgi-openshift.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "swgi-openshift.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "swgi-openshift.fullname" . }}
+    spec:
+      serviceAccountName: {{ include "swgi-openshift.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: swgi-openshift
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ include "swgi-openshift.fullname" . }}
+            - secretRef:
+                name: {{ include "swgi-openshift.fullname" . }}
+          volumeMounts:
+            - name: signing-key
+              mountPath: /tmp/secrets
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsUser: 10001
+            runAsNonRoot: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8080
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+      volumes:
+        - name: signing-key
+          secret:
+            secretName: {{ include "swgi-openshift.fullname" . }}
+            items:
+              - key: signing_key_ed25519.pem
+                path: signing_key_ed25519.pem

@@ -1,0 +1,3 @@
+# Local packaging evidence
+- No cluster upgrade flow was executed from this environment.
+- Upgrade validation remains pending on a real OpenShift cluster.

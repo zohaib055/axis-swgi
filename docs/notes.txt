@@ -1,0 +1,7 @@
+
+We have trademarket platform
+
+TradeMarket stays stable (no refactor). We only add the thinnest integration hook needed.
+swgi_core exposes evaluate(intent, context, action) -> (ALLOW/DENY, receipt)
+Sandbox is the deliverable: receipts saved locally + verify endpoint GET /receipt/{receipt_id}
+Sandbox also supports federated nodes next: node-local receipts + optional registry anchor.

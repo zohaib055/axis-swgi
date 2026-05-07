@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "swgi-openshift.fullname" . }}
+data:
+  SWGI_MODE: {{ .Values.config.swgiMode | quote }}
+  HOST: "0.0.0.0"
+  PORT: "8080"
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  SWGI_ORG_ID: {{ .Values.config.swgiOrgId | quote }}
+  SWGI_NODE_ID: {{ .Values.config.swgiNodeId | quote }}
+  POLICY_PATH: {{ .Values.config.policyPath | quote }}
+  SIGNING_KEY_PATH: {{ .Values.config.signingKeyPath | quote }}
+  RECEIPT_STORE_BACKEND: {{ .Values.config.receiptStoreBackend | quote }}
+  RECEIPT_DB_PATH: {{ .Values.config.receiptDbPath | quote }}
+  DATABASE_URL: {{ .Values.config.databaseUrl | quote }}
+  DB_CONNECT_TIMEOUT_SECONDS: {{ .Values.config.dbConnectTimeoutSeconds | quote }}
+  RUN_DB_MIGRATIONS: {{ .Values.config.runDbMigrations | quote }}
+  TLS_ENABLED: {{ .Values.config.tlsEnabled | quote }}
+  METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}

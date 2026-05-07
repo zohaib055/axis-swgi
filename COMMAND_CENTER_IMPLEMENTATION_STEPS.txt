@@ -1,0 +1,368 @@
+SWGI Command Center Implementation Steps
+
+Purpose
+-------
+The Command Center will become the SWGI control plane and Policy Decision
+Point. It will accept workload execution intent, evaluate policy, generate
+signed Trust Receipts, store metadata in Postgres, and provide a metadata-only
+dashboard for traceability, usage, billing, and operator status.
+
+OpenShift remains unchanged. The Command Center does not deploy workloads,
+does not call Kubernetes or OpenShift APIs directly, and does not interact with
+containers or the runtime layer. The SWGI Operator is the only component that
+translates approved authorization artifacts into Kubernetes/OpenShift actions.
+
+
+Local Repository Responsibilities
+---------------------------------
+axis-swgi-openshift/
+  Current SWGI API and Trust Receipt service. This becomes the foundation for
+  the Command Center backend: policy decisions, signed receipt generation,
+  metadata persistence, dashboard APIs, and usage metering.
+
+swgi-operator/
+  Current OpenShift Operator. This evolves from lifecycle/deployment management
+  into the enforcement layer that verifies signed authorization artifacts before
+  applying Kubernetes/OpenShift actions.
+
+
+Target Flow
+-----------
+User Intent
+  -> Command Center
+      -> policy decision
+      -> signed Trust Receipt
+      -> metadata stored in Postgres
+  -> SWGI Operator
+      -> verifies signed authorization artifact
+      -> enforces inside the cluster
+  -> OpenShift
+      -> executes workload normally
+  -> Operator status
+      -> Command Center dashboard and usage metering
+
+
+Implementation Steps
+--------------------
+
+1. Define Command Center as the control plane
+
+The Command Center will be the single trusted entry point for execution intent.
+It will act as the Policy Decision Point and produce signed authorization
+artifacts.
+
+Hard constraints:
+- It does not deploy workloads.
+- It does not call Kubernetes/OpenShift APIs directly.
+- It does not interact with containers or runtime internals.
+- It does not store raw customer data.
+
+
+2. Create the intent intake flow
+
+Users submit execution intent to the Command Center.
+
+Intent metadata should include only what is required for policy and
+enforcement:
+- org_id
+- cluster_id
+- namespace
+- workload_id
+- action
+- identity or role
+- policy context
+- requested execution metadata
+
+The intent intake path replaces direct access as the trusted execution flow.
+Direct kubectl or raw API paths may still exist for cluster administration, but
+they are not part of the SWGI trusted execution path.
+
+
+3. Evaluate policy
+
+For every submitted intent, the Command Center runs deterministic policy
+evaluation.
+
+Supported decisions:
+- ALLOW
+- DENY
+- MODIFY
+
+The policy engine decides whether execution is permitted, denied, or requires
+controlled modification before enforcement.
+
+
+4. Generate a signed Trust Receipt
+
+After policy evaluation, the Command Center generates a cryptographically
+signed Trust Receipt.
+
+The receipt contains metadata only:
+- receipt_id
+- org_id
+- cluster_id
+- namespace
+- workload_id
+- action
+- decision
+- reason
+- policy_id or policy_version
+- payload_hash
+- authority_hash
+- timestamp
+- expiry
+- signature_algorithm
+- signature
+
+The receipt must not contain:
+- raw prompts
+- raw outputs
+- customer payloads
+- secrets
+- container logs
+- environment variable values
+- sensitive workload data
+
+
+5. Store receipt metadata in Postgres
+
+Postgres stores Trust Receipt metadata, usage data, policy history, cluster
+state, and operator events.
+
+Core tables:
+- organizations
+- clusters
+- namespaces
+- workloads
+- policies
+- trust_receipts
+- usage_metering
+- operator_events
+- billing_periods
+
+The main trust_receipts table should store:
+- receipt_id
+- org_id
+- cluster_id
+- namespace
+- workload_id
+- action
+- decision
+- reason
+- policy_id
+- payload_hash
+- authority_token_hash
+- signature
+- signature_algorithm
+- integrity_classification
+- created_at
+- expires_at
+- latency_ms
+
+Core guarantee:
+Postgres stores proof that something happened, not the private content of what
+happened.
+
+
+6. Expose Command Center dashboard APIs
+
+The backend exposes metadata-only APIs for the UI.
+
+Initial API surface:
+- GET /v1/receipts
+- GET /v1/receipts/{receipt_id}
+- GET /v1/usage
+- GET /v1/clusters
+- GET /v1/policies
+- GET /v1/operator-events
+
+These APIs power filtering, audit views, usage dashboards, cluster health, and
+operator status.
+
+
+7. Build the metadata-only Command Center UX
+
+The UI should provide full execution traceability from a governance perspective
+without exposing private workload data.
+
+Primary pages:
+- Dashboard
+- Receipts
+- Receipt Detail
+- Usage and Billing
+- Clusters
+- Policies
+- Operator Events
+
+Dashboard should show:
+- total executions
+- ALLOW / DENY / MODIFY counts
+- recent Trust Receipts
+- execution trend over time
+- policy decision trend
+- operator health summary
+
+Receipts page should support filters:
+- decision
+- org
+- cluster
+- namespace
+- workload
+- policy
+- time range
+
+Receipt detail should show:
+- receipt metadata
+- signature verification status
+- policy decision
+- hashes
+- timestamp and expiry
+- operator enforcement status
+
+Usage and billing should show:
+- executions by org
+- executions by cluster
+- executions by namespace
+- billable ALLOW executions
+- denied attempts
+- monthly usage
+- plan or license limit
+- over-limit status
+
+
+8. Send authorization artifacts to the Operator
+
+For ALLOW or valid MODIFY decisions, the Command Center hands a signed
+authorization artifact to the SWGI Operator.
+
+The Command Center does not apply Kubernetes resources itself.
+
+The handoff is:
+Command Center -> signed Trust Receipt / authorization object -> SWGI Operator
+
+
+9. Add Operator-side verification
+
+The Operator verifies the signed authorization artifact before enforcement.
+
+Critical trust-model requirement:
+The Operator must enforce strict signature and payload hash binding. It is not
+enough to verify that a receipt signature is valid in isolation. The Operator
+must recompute the payload_hash from the exact execution object it is about to
+apply, then verify that the signed Trust Receipt binds to that same payload,
+cluster, namespace, workload, action, policy, and expiry window.
+
+The Operator must reject execution when:
+- the signature is invalid
+- the receipt is expired
+- the receipt was tampered with
+- the decision is DENY
+- the cluster_id does not match
+- the namespace does not match
+- the workload_id does not match
+- the payload hash does not match the expected intent
+- the policy version is not acceptable
+
+This prevents receipt replay, cross-cluster reuse, cross-namespace reuse,
+workload mutation after approval, and any bypass around Command Center policy
+enforcement.
+
+
+10. Add or extend an execution CRD
+
+The Operator should watch an execution-oriented custom resource such as
+SwgiExecution.
+
+Example shape:
+
+apiVersion: swgi.io/v1alpha1
+kind: SwgiExecution
+spec:
+  receipt:
+    receipt_id: "..."
+    org_id: "..."
+    cluster_id: "..."
+    namespace: "..."
+    workload_id: "..."
+    action: "..."
+    decision: "ALLOW"
+    payload_hash: "..."
+    authority_hash: "..."
+    policy_id: "..."
+    timestamp: "..."
+    expires_at: "..."
+    signature_algorithm: "ed25519"
+    signature: "..."
+  workload:
+    image: "..."
+    replicas: 1
+
+The exact schema can evolve, but the enforcement rule stays fixed: no valid
+signed authorization artifact means no trusted execution.
+
+
+11. Operator applies Kubernetes/OpenShift actions
+
+Only after verification succeeds does the Operator translate the approved
+intent into Kubernetes/OpenShift actions.
+
+OpenShift continues to run workloads normally. The container runtime and
+cluster execution layer are not replaced.
+
+
+12. Operator reports status back to Command Center
+
+The Operator sends metadata-only enforcement status back to the Command Center.
+
+Status metadata:
+- receipt_id
+- cluster_id
+- namespace
+- workload_id
+- enforcement_status
+- started_at
+- completed_at
+- error_code
+- error_summary
+- operator_version
+
+This feeds dashboard visibility, audit history, and usage metering.
+
+
+13. Meter usage for billing
+
+Usage is calculated from receipt and enforcement metadata.
+
+Billing dimensions:
+- total executions
+- allowed executions
+- denied attempts
+- modified executions
+- cluster count
+- namespace count
+- policy tier
+- billing period
+
+Billing is enforced from execution metadata and counts, not from customer data.
+
+
+Immediate Engineering Priorities
+--------------------------------
+
+1. Remove raw request payload persistence from the current receipt service.
+2. Add cluster_id, namespace, and expiry fields to receipt metadata.
+3. Add Postgres-backed receipt and usage storage.
+4. Add dashboard query APIs for receipts, usage, clusters, and operator events.
+5. Build the initial Command Center UX.
+6. Add a SwgiExecution CRD to swgi-operator.
+7. Add strict signature verification and payload hash binding in the Operator.
+8. Add Operator status reporting back to Command Center.
+9. Tighten docs and tests around the metadata-only privacy boundary.
+
+
+Final Core Guarantee
+--------------------
+The Command Center controls and records the trusted execution flow, but it
+never sees or stores raw customer workload data. OpenShift remains the runtime.
+The SWGI Operator remains the only component that translates approved signed
+authorization artifacts into cluster actions.

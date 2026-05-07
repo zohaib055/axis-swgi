@@ -1,0 +1,103 @@
+The standalone flow should be:
+
+SWGI Command Center = hosted control plane / SaaS
+SWGI Operator = installed inside customer Kubernetes/OpenShift cluster
+So customers do not install the whole Command Center inside OpenShift unless they choose a private deployment. Normally they install only the Operator.
+
+1. SWGI Hosts Command Center
+
+   You run Command Center somewhere controlled by SWGI:
+
+        swgi-command-center
+        Postgres
+        dashboard UI
+        API
+        billing/usage
+        receipt store
+        This becomes the central product.
+
+2. Admin Creates Org
+
+In Command Center:
+
+    Create org
+    Create billing plan/license
+    Create cluster registration
+    Generate operator install token
+    Generate public verification config
+
+3. Customer Installs Operator
+
+Customer installs the lightweight SWGI Operator into their cluster:
+
+helm install swgi-operator ...
+or for OpenShift:
+
+oc apply -f catalogsource.yaml
+oc apply -f subscription.yaml
+The Operator gets:
+
+COMMAND_CENTER_URL
+ORG_ID
+CLUSTER_ID
+OPERATOR_TOKEN
+PUBLIC_SIGNING_KEY
+
+4. Operator Registers / Heartbeats
+
+The Operator calls Command Center:
+
+POST /v1/operator-events
+POST /v1/clusters/{cluster_id}/heartbeat
+Command Center dashboard now shows:
+
+Org active
+Cluster connected
+Operator healthy
+
+5. User Submits Execution Intent
+
+A platform/admin user submits intent to Command Center:
+
+I want to deploy workload X into namespace Y
+
+Command Center:
+
+evaluates policy using swgi_core
+returns ALLOW / DENY / MODIFY
+creates signed Trust Receipt
+stores metadata in Postgres
+6. Operator Enforces
+For allowed actions, Operator receives or pulls the signed authorization artifact.
+
+Operator verifies:
+
+signature valid
+payload_hash matches exact workload
+org_id matches
+cluster_id matches
+namespace matches
+workload_id matches
+receipt not expired
+decision is ALLOW/MODIFY
+Then it applies the Kubernetes/OpenShift action.
+
+7. Command Center Shows Proof
+
+Operator reports metadata-only status back:
+
+receipt_id
+cluster_id
+namespace
+workload_id
+enforcement_status
+timestamp
+operator_version
+Dashboard shows receipts, usage, billing, cluster health, and audit proof.
+
+So standalone means:
+
+Command Center is the product brain.
+Operator is the cluster-side enforcement agent.
+OpenShift/GKE/EKS/AKS are just supported runtimes.
+OpenShift path is just one install target, not the whole product anymore

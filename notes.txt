@@ -1,0 +1,10 @@
+=== Current Architecture ===
+
+swgi_core
+  -> core deterministic governance / policy logic
+
+swgi-openshift
+  -> OpenShift API service using swgi_core
+
+swgi-operator
+  -> OLM Operator packaging/deployment for swgi-openshift

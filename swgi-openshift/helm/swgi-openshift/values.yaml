@@ -1,0 +1,53 @@
+replicaCount: 1
+
+image:
+  repository: registry.connect.redhat.com/axissystems/swgi-core
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+config:
+  swgiMode: production
+  logLevel: INFO
+  logFormat: json
+  swgiOrgId: org-prod
+  swgiNodeId: fen-ocp-001
+  policyPath: /opt/app-root/src/swgi-openshift/data/input/policy.json
+  signingKeyPath: /tmp/secrets/signing_key_ed25519.pem
+  receiptStoreBackend: sqlite
+  receiptDbPath: /tmp/swgi/receipts.db
+  databaseUrl: ""
+  dbConnectTimeoutSeconds: "5"
+  runDbMigrations: "true"
+  tlsEnabled: "true"
+  metricsEnabled: "true"
+
+secrets:
+  adminApiToken: change-admin-token
+  viewerApiToken: change-viewer-token
+  signingKey: |
+    -----BEGIN PRIVATE KEY-----
+    REPLACE_WITH_REAL_ED25519_PRIVATE_KEY
+    -----END PRIVATE KEY-----
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: ""

@@ -1,0 +1,10 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: axis-swgi-operator-catalog
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: registry.connect.redhat.com/axissystems/axis-swgi-operator-index:0.1.0
+  displayName: Axis SWGI Operator Catalog
+  publisher: SWGI

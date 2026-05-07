@@ -1,0 +1,16 @@
+time="2026-03-19T01:04:11+05:00" level=info msg="certification library version" version="1.16.0 <commit: b4a231cf9d50c5471eed598b3b48906eb5b9f3f7>"
+time="2026-03-19T01:04:14+05:00" level=info msg="running checks for quay.io/zohaib055/swgi-core:0.1.0 for platform arm64"
+time="2026-03-19T01:04:14+05:00" level=info msg="target image" image="quay.io/zohaib055/swgi-core:0.1.0"
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=HasLicense result=FAILED
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=HasUniqueTag result=PASSED
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=LayerCountAcceptable result=PASSED
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=HasNoProhibitedPackages result=PASSED
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=HasRequiredLabel result=PASSED
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=HasNoProhibitedLabels result=FAILED
+time="2026-03-19T01:05:51+05:00" level=info msg="USER 10001 specified that is non-root" check=RunAsNonRoot
+time="2026-03-19T01:05:51+05:00" level=info msg="check completed" check=RunAsNonRoot result=PASSED
+time="2026-03-19T01:05:56+05:00" level=info msg="check completed" check=HasModifiedFiles result=PASSED
+time="2026-03-19T01:05:58+05:00" level=info msg="check completed" check=BasedOnUbi result=PASSED
+time="2026-03-19T01:05:58+05:00" level=info msg="check completed" check=HasProhibitedContainerName result=PASSED
+time="2026-03-19T01:05:58+05:00" level=info msg="This image's tag 0.1.0 will be paired with digest sha256:9bca1dda984cb8b05ea51913f165494a41fc0c15f4fb4045dfd003435ed88c9e once this image has been published in accordance with Red Hat Certification policy. You may then add or remove any supplemental tags through your Red Hat Connect portal as you see fit."
+time="2026-03-19T01:05:59+05:00" level=info msg="Preflight result: FAILED"

@@ -1,0 +1,65 @@
+SWGI Command Center Production Checklist
+
+Completed
+---------
+- Standalone Command Center scaffold.
+- Poetry project setup.
+- Alembic migrations.
+- Live RDS migration through 0003_prod_hardening.
+- Postgres-only runtime storage.
+- Multi-org schema and org CRUD.
+- Cluster registration.
+- Cluster-scoped Operator install token generation.
+- Org-scoped API keys.
+- API key hashing with API_KEY_HASH_SECRET.
+- API key expiration field.
+- API key revoke and rotate endpoints.
+- Operator heartbeat endpoint.
+- Operator events endpoint.
+- Execution handoff queue:
+  - GET /v1/operator/executions/pending
+  - POST /v1/operator/executions/{execution_id}/status
+- Execution requests are created for ALLOW/MODIFY receipts.
+- Tenant-scoped auth roles:
+  - platform_admin
+  - platform_viewer
+  - org_admin
+  - org_viewer
+  - operator
+- Failed auth tracking.
+- Request IDs via x-request-id.
+- Lightweight in-process rate limiting.
+- Audit log table and audit log API.
+- Plans table and plan listing API.
+- Prometheus metrics endpoint with scoped intent counter.
+- /healthz and /readyz.
+- Metadata-only receipt tests.
+- Auth-scope tests.
+- DB URL normalization tests.
+- Optional live Postgres integration test scaffold.
+- Dockerfile.
+- docker-compose local stack.
+- Operator contract documentation.
+- Security documentation.
+- Deployment documentation.
+- Observability documentation.
+- Loveable UI prompt.
+
+Still Remaining / Next Product Depth
+------------------------------------
+- Build the actual Command Center UI from LOVABLE_PROMPT.md.
+- Wire the real swgi-operator repository to:
+  - register with Command Center
+  - heartbeat
+  - pull pending executions
+  - verify receipt signatures and payload_hash
+  - submit execution status
+  - submit operator events
+- Add production-grade distributed rate limiting at ingress/Redis.
+- Add background retention jobs for receipts, audits, failed auth events, and operator events.
+- Add SSO/OIDC/SAML for enterprise users.
+- Add user/team management beyond API keys.
+- Add billing provider integration.
+- Add Kubernetes/Helm production deployment chart for Command Center itself.
+- Add CI pipeline that runs unit tests, optional integration tests, image build, and migration checks.
+- Add signing key rotation overlap support.

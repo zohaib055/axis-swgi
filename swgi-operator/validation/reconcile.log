@@ -1,0 +1,5 @@
+# Local packaging evidence
+- Operator controller code compiled successfully.
+- Operator unit tests passed locally.
+- Operator image built locally and passed `preflight` image checks on arm64.
+- No cluster-backed reconcile run was executed because no Kubernetes/OpenShift context was configured.

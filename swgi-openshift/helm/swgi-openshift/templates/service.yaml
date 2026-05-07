@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "swgi-openshift.fullname" . }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ include "swgi-openshift.fullname" . }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: 8080

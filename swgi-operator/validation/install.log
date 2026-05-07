@@ -1,0 +1,4 @@
+# Local packaging evidence
+- No active `kubectl` context was configured in this environment.
+- `oc` was not available in this environment.
+- Real cluster install validation has not been executed yet.

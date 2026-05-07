@@ -1,0 +1,36 @@
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "swgi-command-center"
+version = "0.1.0"
+description = "SWGI Command Center for Kubernetes-native execution governance"
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+authors = [
+  { name = "SWGI Team" }
+]
+license = "LicenseRef-Proprietary"
+dynamic = ["dependencies"]
+
+[tool.poetry]
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+alembic = ">=1.14.0"
+fastapi = ">=0.115.0"
+prometheus-client = ">=0.20.0"
+psycopg = { version = ">=3.2.0", extras = ["binary"] }
+pydantic = ">=2.8.0"
+python-dotenv = ">=1.0.0"
+swgi-core = { path = "../swgi_core", develop = true }
+uvicorn = { version = ">=0.30.0", extras = ["standard"] }
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["..", "../swgi_core"]

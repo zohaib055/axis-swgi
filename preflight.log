@@ -1,0 +1,23 @@
+time="2026-03-19T04:50:18+05:00" level=info msg="certification library version" version="1.16.0 <commit: b4a231cf9d50c5471eed598b3b48906eb5b9f3f7>"
+time="2026-03-19T04:50:21+05:00" level=info msg="running checks for quay.io/axis919/swgi-core:0.1.0 for platform arm64"
+time="2026-03-19T04:50:22+05:00" level=info msg="target image" image="quay.io/axis919/swgi-core:0.1.0"
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=HasLicense result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=HasUniqueTag result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=LayerCountAcceptable result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=HasNoProhibitedPackages result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=HasRequiredLabel result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=HasNoProhibitedLabels result=PASSED
+time="2026-03-19T04:51:43+05:00" level=info msg="USER 10001 specified that is non-root" check=RunAsNonRoot
+time="2026-03-19T04:51:43+05:00" level=info msg="check completed" check=RunAsNonRoot result=PASSED
+time="2026-03-19T04:51:48+05:00" level=info msg="check completed" check=HasModifiedFiles result=PASSED
+time="2026-03-19T04:51:50+05:00" level=info msg="check completed" check=BasedOnUbi result=PASSED
+time="2026-03-19T04:51:50+05:00" level=info msg="check completed" check=HasProhibitedContainerName result=PASSED
+time="2026-03-19T04:51:50+05:00" level=info msg="This image's tag 0.1.0 will be paired with digest sha256:ad938716978c797a67698d4edd89a766b2a59626ad00999038bad4e76c53587b once this image has been published in accordance with Red Hat Certification policy. You may then add or remove any supplemental tags through your Red Hat Connect portal as you see fit."
+time="2026-03-19T04:51:51+05:00" level=info msg="preparing results that will be submitted to Red Hat"
+time="2026-03-19T04:52:05+05:00" level=info msg="Test results have been submitted to Red Hat."
+time="2026-03-19T04:52:05+05:00" level=info msg="These results will be reviewed by Red Hat for final certification."
+time="2026-03-19T04:52:05+05:00" level=info msg="The container's image id is: 69bb3aa2a0044fc93657583b."
+time="2026-03-19T04:52:05+05:00" level=info msg="Please check https://connect.redhat.com/component/view/69baa54c6a105b5f7ab59ba7/certification/test-results/69bb3a98e3d70141b65ed30f to view test results."
+time="2026-03-19T04:52:05+05:00" level=info msg="Please check https://connect.redhat.com/component/view/69baa54c6a105b5f7ab59ba7/security/vulnerabilities/69bb3aa2a0044fc93657583b to view security vulnerabilities."
+time="2026-03-19T04:52:05+05:00" level=info msg="Please check https://connect.redhat.com/component/view/69baa54c6a105b5f7ab59ba7/images to monitor the progress."
+time="2026-03-19T04:52:05+05:00" level=info msg="Preflight result: PASSED"

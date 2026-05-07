@@ -1,0 +1,12 @@
+FROM scratch
+
+LABEL operators.operatorframework.io.bundle.package.v1="axis-swgi-operator" \
+      operators.operatorframework.io.bundle.channels.v1="alpha,stable" \
+      operators.operatorframework.io.bundle.channel.default.v1="stable" \
+      operators.operatorframework.io.bundle.manifests.v1="manifests/" \
+      operators.operatorframework.io.bundle.metadata.v1="metadata/" \
+      operators.operatorframework.io.bundle.mediatype.v1="registry+v1" \
+      com.redhat.openshift.versions="v4.12-v4.16"
+
+COPY bundle/manifests /manifests/
+COPY bundle/metadata /metadata/

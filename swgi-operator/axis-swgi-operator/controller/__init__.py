@@ -1,0 +1,1 @@
+"""SWGI operator package."""

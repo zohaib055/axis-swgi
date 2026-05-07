@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swgi-core"
+version = "0.1.0"
+description = "SWGI Federated Enforcement Node core package for deterministic authorization and trust receipt generation"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "SWGI Core Team" }
+]
+license = { text = "Proprietary" }
+dependencies = [
+  "cryptography>=43.0.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["swgi_core*"]

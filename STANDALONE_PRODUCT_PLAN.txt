@@ -1,0 +1,285 @@
+SWGI Standalone Product Plan
+
+Purpose
+-------
+SWGI can be sold as a standalone Kubernetes-native trust, governance, and
+metering platform. The product should no longer depend on a Red Hat partnership
+or OpenShift-only positioning.
+
+OpenShift remains a supported runtime, but not the center of the product
+identity.
+
+
+New Product Positioning
+-----------------------
+Product name/positioning:
+SWGI Command Center for Kubernetes Execution Governance
+
+Core message:
+SWGI gives enterprises cryptographic proof, policy enforcement, execution
+traceability, and usage metering for Kubernetes workloads without exposing
+customer data.
+
+Short positioning line:
+SWGI is a Kubernetes-native trust and metering layer for verifiable workload
+execution.
+
+
+What Changes
+------------
+Old positioning:
+- SWGI for Red Hat OpenShift
+- Red Hat partner/certification-centered story
+- OpenShift-first marketplace path
+
+New positioning:
+- Kubernetes-native execution governance
+- OpenShift-compatible, but not OpenShift-dependent
+- Works across Kubernetes distributions
+- Sold directly as SaaS plus in-cluster Operator
+
+
+Supported Runtime Targets
+-------------------------
+SWGI should support:
+- vanilla Kubernetes
+- Red Hat OpenShift
+- Amazon EKS
+- Azure AKS
+- Google GKE
+- on-prem Kubernetes
+- private cloud Kubernetes
+
+OpenShift compatibility is still valuable, but it becomes one supported
+deployment target rather than the whole product identity.
+
+
+Standalone Architecture
+-----------------------
+The architecture remains:
+
+User Intent
+  -> SWGI Command Center
+      -> policy decision
+      -> signed Trust Receipt
+      -> metadata stored in Postgres
+  -> SWGI Operator
+      -> verifies signed authorization artifact
+      -> enforces inside the customer's cluster
+  -> Kubernetes/OpenShift
+      -> executes workload normally
+  -> Operator status
+      -> Command Center dashboard and usage metering
+
+
+Commercial Deployment Model
+---------------------------
+Recommended model:
+- Hosted SWGI Command Center SaaS
+- Customer installs lightweight SWGI Operator in their cluster
+- Operator receives signed authorization artifacts
+- Operator reports metadata-only status back to Command Center
+
+This keeps customer workload data inside the customer's environment while
+allowing SWGI to provide governance, billing, audit, and policy visibility.
+
+
+Product Components To Finish
+----------------------------
+1. Command Center backend
+   - intent intake
+   - deterministic policy evaluation
+   - signed Trust Receipt generation
+   - Postgres-backed metadata storage
+   - usage and billing APIs
+   - cluster/operator status APIs
+
+2. Command Center UI
+   - dashboard
+   - Trust Receipt table
+   - receipt detail view
+   - usage and billing view
+   - cluster health view
+   - policy history
+   - operator events
+
+3. Postgres metadata store
+   - organizations
+   - clusters
+   - namespaces
+   - workloads
+   - policies
+   - trust_receipts
+   - usage_metering
+   - operator_events
+   - billing_periods
+
+4. SWGI Operator
+   - SwgiExecution CRD or equivalent
+   - strict signature verification
+   - strict payload_hash binding
+   - expiry validation
+   - cluster/namespace/workload binding checks
+   - Kubernetes/OpenShift enforcement
+   - metadata-only status reporting
+
+5. Packaging
+   - Helm chart
+   - Operator bundle
+   - container images in SWGI-controlled registry
+   - local demo install
+   - production deployment guide
+
+6. Security and trust documentation
+   - metadata-only guarantee
+   - no raw prompt/output storage
+   - no customer payload storage
+   - no secret logging
+   - signed receipt verification model
+   - Operator trust boundary
+   - data retention model
+
+
+Privacy And Trust Boundary
+--------------------------
+SWGI must never store:
+- raw prompts
+- raw outputs
+- raw customer payloads
+- secrets
+- container logs
+- environment variable values
+- sensitive workload data
+
+SWGI stores:
+- hashes
+- identifiers
+- decisions
+- timestamps
+- policy IDs
+- signatures
+- receipt metadata
+- operator status
+- usage counts
+
+Core guarantee:
+SWGI stores proof that execution happened, not the private content of what
+happened.
+
+
+Pricing Model Options
+---------------------
+Recommended pricing dimensions:
+- per cluster per month
+- execution volume
+- namespace count
+- retention period
+- policy tier
+- enterprise support/SLA
+
+Example tiers:
+
+Starter
+- 1 cluster
+- limited monthly executions
+- standard receipt retention
+- basic dashboard
+
+Business
+- multiple clusters
+- higher execution volume
+- usage metering
+- policy history
+- operator health
+
+Enterprise
+- custom cluster count
+- custom execution volume
+- longer retention
+- SSO/SAML
+- private deployment option
+- premium support/SLA
+
+
+Best Initial Buyers
+-------------------
+Best-fit customers:
+- AI governance teams
+- platform engineering teams
+- security/compliance teams
+- regulated SaaS companies
+- healthcare technology companies
+- finance technology companies
+- legal technology companies
+- enterprises deploying internal AI agents
+- companies needing execution-level auditability
+
+Avoid pitching first to general developers. The strongest buyers are teams with
+compliance, audit, governance, and platform-control pain.
+
+
+Demo Workflow
+-------------
+The first standalone demo should show:
+
+1. User submits execution intent through Command Center.
+2. Command Center evaluates policy.
+3. Command Center returns ALLOW or DENY.
+4. A signed Trust Receipt is created.
+5. The receipt is stored in Postgres as metadata only.
+6. Operator receives the signed authorization artifact.
+7. Operator verifies signature and payload_hash binding.
+8. Operator applies the approved Kubernetes/OpenShift action.
+9. Dashboard shows receipt metadata and enforcement status.
+10. Usage page increments execution count.
+11. No raw customer payload appears anywhere.
+
+
+Engineering Roadmap
+-------------------
+1. Remove raw request payload persistence from the current receipt service.
+2. Add cluster_id, namespace, and expires_at to Trust Receipt metadata.
+3. Ensure production receipt storage uses Postgres.
+4. Add usage and billing tables.
+5. Add Command Center dashboard APIs.
+6. Build initial Command Center UI.
+7. Add SwgiExecution CRD to the Operator.
+8. Add strict signature verification and payload_hash binding in the Operator.
+9. Add Operator metadata-only status reporting.
+10. Add Helm-based standalone install.
+11. Publish images to a SWGI-controlled registry.
+12. Remove Red Hat partnership-specific language from public docs.
+13. Keep OpenShift as a supported runtime target.
+14. Build the standalone demo workflow.
+
+
+Language To Use
+---------------
+Use:
+- Kubernetes-native
+- OpenShift-compatible
+- metadata-only compliance
+- cryptographic Trust Receipts
+- verifiable execution governance
+- policy-bound enforcement
+- usage metering at the execution layer
+- no raw customer data exposure
+
+Avoid:
+- Red Hat partner
+- Red Hat certified
+- OpenShift-only
+- runtime replacement
+- Kubernetes replacement
+- direct cluster control from Command Center
+
+
+Bottom Line
+-----------
+SWGI can be sold standalone as a Kubernetes-native trust and metering layer.
+The product value is not dependent on Red Hat.
+
+The strongest standalone story is:
+SWGI gives enterprises verifiable execution governance for Kubernetes workloads
+using signed Trust Receipts, policy-bound Operator enforcement, metadata-only
+auditability, and usage metering without exposing customer data.

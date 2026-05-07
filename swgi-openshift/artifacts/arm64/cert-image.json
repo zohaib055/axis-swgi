@@ -1,0 +1,166 @@
+{
+    "certified": false,
+    "deleted": false,
+    "docker_image_digest": "sha256:9bca1dda984cb8b05ea51913f165494a41fc0c15f4fb4045dfd003435ed88c9e",
+    "docker_image_id": "sha256:9ca6326794e7758adfcfb6f7ec5ebdeeb593f20dfee4143c4770f037e5434d09",
+    "image_id": "sha256:9bca1dda984cb8b05ea51913f165494a41fc0c15f4fb4045dfd003435ed88c9e",
+    "parsed_data": {
+        "architecture": "arm64",
+        "command": "python3 -m app.main",
+        "created": "2026-03-18 10:17:42.756387028 +0000 UTC",
+        "image_id": "sha256:9bca1dda984cb8b05ea51913f165494a41fc0c15f4fb4045dfd003435ed88c9e",
+        "labels": [
+            {
+                "name": "com.redhat.license_terms",
+                "value": "https://www.redhat.com/en/about/red-hat-end-user-license-agreements#UBI"
+            },
+            {
+                "name": "cpe",
+                "value": "cpe:/a:redhat:enterprise_linux:9::appstream"
+            },
+            {
+                "name": "io.buildah.version",
+                "value": "1.43.0"
+            },
+            {
+                "name": "name",
+                "value": "swgi-openshift"
+            },
+            {
+                "name": "org.opencontainers.image.revision",
+                "value": "ddf3e9d218968613397a7b4df7547f25ad755449"
+            },
+            {
+                "name": "release",
+                "value": "1"
+            },
+            {
+                "name": "vcs-type",
+                "value": "git"
+            },
+            {
+                "name": "architecture",
+                "value": "aarch64"
+            },
+            {
+                "name": "description",
+                "value": "Production-oriented SWGI API service for OpenShift validation and deployment."
+            },
+            {
+                "name": "io.k8s.description",
+                "value": "The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly."
+            },
+            {
+                "name": "io.openshift.tags",
+                "value": "minimal rhel9"
+            },
+            {
+                "name": "url",
+                "value": "https://catalog.redhat.com/en/search?searchType=containers"
+            },
+            {
+                "name": "vendor",
+                "value": "SWGI"
+            },
+            {
+                "name": "com.redhat.component",
+                "value": "ubi9-minimal-container"
+            },
+            {
+                "name": "distribution-scope",
+                "value": "public"
+            },
+            {
+                "name": "io.openshift.expose-services",
+                "value": ""
+            },
+            {
+                "name": "org.opencontainers.image.created",
+                "value": "2026-03-11T04:53:07Z"
+            },
+            {
+                "name": "summary",
+                "value": "SWGI OpenShift authorization API"
+            },
+            {
+                "name": "version",
+                "value": "0.1.0"
+            },
+            {
+                "name": "build-date",
+                "value": "2026-03-11T04:53:07Z"
+            },
+            {
+                "name": "io.k8s.display-name",
+                "value": "Red Hat Universal Base Image 9 Minimal"
+            },
+            {
+                "name": "maintainer",
+                "value": "Red Hat, Inc."
+            },
+            {
+                "name": "vcs-ref",
+                "value": "ddf3e9d218968613397a7b4df7547f25ad755449"
+            }
+        ],
+        "layers": [
+            "sha256:586b2541ed6af9adb2c722f4e3582b3e0882f9b49c73210d30705523a95aed80",
+            "sha256:24ee67eafd8f2248f412773f4ad8492b6136e2c12a52c9dec95140cfcf9f105a",
+            "sha256:35a9857aa29539da913691c1301820024630ac7025a1230baf822fdcfe6fb064",
+            "sha256:77c8609f9de441a160ca84407049eb9d6add87ea430309c66739d44906e360fa",
+            "sha256:79798e4a7629af8ded529c560e588b7fbe502a143c7dba2a66294fa28c164eb2",
+            "sha256:312bcc3ff2fa550a6fb4fc6064175f01f46ada11f142d5cdec6f617289524653",
+            "sha256:a929c158045efa38dcdfac5809dfda6e7c13c225e0aae109412941b4ed8f3880"
+        ],
+        "os": "linux",
+        "size": 1640,
+        "uncompressed_layer_sizes": [
+            {
+                "layer_id": "sha256:c7410a127a918b80107d9a2217152d5a03ecd574be33abc513393bf0d912b520",
+                "size_bytes": 110461440
+            },
+            {
+                "layer_id": "sha256:759808f6a760f0a9965dd36cab7754ab1bac063c3a320c1aaa9ebb9ffa414d06",
+                "size_bytes": 96671232
+            },
+            {
+                "layer_id": "sha256:a19d92e3c3fe9336994af643a606759fa56ce12438f0cb85bceb4acc98cfda3a",
+                "size_bytes": 3072
+            },
+            {
+                "layer_id": "sha256:1d73e6098df6657362a02bad1c5027e3bd680cfc52b1db3dd1f2c9aad8ad8605",
+                "size_bytes": 48163328
+            },
+            {
+                "layer_id": "sha256:564b3f0ce18bcc056bf2d4b9c302b6b9ddc8993f1487ccb08190873758ba4019",
+                "size_bytes": 112128
+            },
+            {
+                "layer_id": "sha256:55bface4efb4b95c09be46e9101ff68f8ab7a568af2e85056159708bae8788b3",
+                "size_bytes": 78049280
+            },
+            {
+                "layer_id": "sha256:52306003dc9d6c2a02fc6a568e2f17f7df6956733f69264a64649aef4372cde7",
+                "size_bytes": 48293376
+            }
+        ]
+    },
+    "architecture": "arm64",
+    "raw_config": "{\"created\":\"2026-03-18T10:17:42.756387028Z\",\"architecture\":\"arm64\",\"os\":\"linux\",\"variant\":\"v8\",\"config\":{\"User\":\"10001\",\"ExposedPorts\":{\"8080/tcp\":{}},\"Env\":[\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\",\"container=oci\",\"PYTHONDONTWRITEBYTECODE=1\",\"PYTHONUNBUFFERED=1\",\"PIP_NO_CACHE_DIR=1\"],\"Cmd\":[\"python3\",\"-m\",\"app.main\"],\"WorkingDir\":\"/opt/app-root/src/swgi-openshift\",\"Labels\":{\"architecture\":\"aarch64\",\"build-date\":\"2026-03-11T04:53:07Z\",\"com.redhat.component\":\"ubi9-minimal-container\",\"com.redhat.license_terms\":\"https://www.redhat.com/en/about/red-hat-end-user-license-agreements#UBI\",\"cpe\":\"cpe:/a:redhat:enterprise_linux:9::appstream\",\"description\":\"Production-oriented SWGI API service for OpenShift validation and deployment.\",\"distribution-scope\":\"public\",\"io.buildah.version\":\"1.43.0\",\"io.k8s.description\":\"The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly.\",\"io.k8s.display-name\":\"Red Hat Universal Base Image 9 Minimal\",\"io.openshift.expose-services\":\"\",\"io.openshift.tags\":\"minimal rhel9\",\"maintainer\":\"Red Hat, Inc.\",\"name\":\"swgi-openshift\",\"org.opencontainers.image.created\":\"2026-03-11T04:53:07Z\",\"org.opencontainers.image.revision\":\"ddf3e9d218968613397a7b4df7547f25ad755449\",\"release\":\"1\",\"summary\":\"SWGI OpenShift authorization API\",\"url\":\"https://catalog.redhat.com/en/search?searchType=containers\",\"vcs-ref\":\"ddf3e9d218968613397a7b4df7547f25ad755449\",\"vcs-type\":\"git\",\"vendor\":\"SWGI\",\"version\":\"0.1.0\"}},\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[\"sha256:c7410a127a918b80107d9a2217152d5a03ecd574be33abc513393bf0d912b520\",\"sha256:759808f6a760f0a9965dd36cab7754ab1bac063c3a320c1aaa9ebb9ffa414d06\",\"sha256:a19d92e3c3fe9336994af643a606759fa56ce12438f0cb85bceb4acc98cfda3a\",\"sha256:1d73e6098df6657362a02bad1c5027e3bd680cfc52b1db3dd1f2c9aad8ad8605\",\"sha256:564b3f0ce18bcc056bf2d4b9c302b6b9ddc8993f1487ccb08190873758ba4019\",\"sha256:55bface4efb4b95c09be46e9101ff68f8ab7a568af2e85056159708bae8788b3\",\"sha256:52306003dc9d6c2a02fc6a568e2f17f7df6956733f69264a64649aef4372cde7\"]},\"history\":[{\"created\":\"2026-03-11T04:53:19.685698554Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL maintainer=\\\"Red Hat, Inc.\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.701722504Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL vendor=\\\"Red Hat, Inc.\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.718575145Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL url=\\\"https://catalog.redhat.com/en/search?searchType=containers\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.734551506Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL com.redhat.component=\\\"ubi9-minimal-container\\\"       name=\\\"ubi9/ubi-minimal\\\"       version=\\\"9.7\\\"       cpe=\\\"cpe:/a:redhat:enterprise_linux:9::appstream\\\"       distribution-scope=\\\"public\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.751016243Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL com.redhat.license_terms=\\\"https://www.redhat.com/en/about/red-hat-end-user-license-agreements#UBI\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.767519322Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL summary=\\\"Provides the latest release of the minimal Red Hat Universal Base Image 9.\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.784451627Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL description=\\\"The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly.\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.800658264Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL io.k8s.description=\\\"The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly.\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.817120227Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL io.k8s.display-name=\\\"Red Hat Universal Base Image 9 Minimal\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.835883089Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL io.openshift.expose-services=\\\"\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.852146465Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL io.openshift.tags=\\\"minimal rhel9\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:19.868784879Z\",\"created_by\":\"/bin/sh -c #(nop) ENV container oci\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:20.757621516Z\",\"created_by\":\"/bin/sh -c #(nop) COPY dir:7796b64b73526e8dad6fca20071cfe57334a57323fbbb1f9256c4ffffa8b27db in /      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:20.847771321Z\",\"created_by\":\"/bin/sh -c #(nop) COPY file:1376702515d596f414e3aa494e0daa6d408a6d2475c4aeca96bf9392f5287f69 in /etc/yum.repos.d/.      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:20.864551651Z\",\"created_by\":\"/bin/sh -c #(nop) CMD [\\\"/bin/bash\\\"]\",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:20.950898106Z\",\"created_by\":\"/bin/sh -c #(nop) COPY file:93583a9ebbaeff1e36b48820b647eea1eef523f6627dacfb0b21af79f5a41b35 in /usr/share/buildinfo/content-sets.json      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:21.038456512Z\",\"created_by\":\"/bin/sh -c #(nop) COPY file:93583a9ebbaeff1e36b48820b647eea1eef523f6627dacfb0b21af79f5a41b35 in /root/buildinfo/content_manifests/content-sets.json      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:21.12718901Z\",\"created_by\":\"/bin/sh -c #(nop) COPY file:186c4202737062dc84f1db98b633710a412a23c003ba73ff6ae51d727aea1cd8 in /usr/share/buildinfo/labels.json      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:21.218234402Z\",\"created_by\":\"/bin/sh -c #(nop) COPY file:186c4202737062dc84f1db98b633710a412a23c003ba73ff6ae51d727aea1cd8 in /root/buildinfo/labels.json      \",\"empty_layer\":true},{\"created\":\"2026-03-11T04:53:21.514772381Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL \\\"architecture\\\"=\\\"aarch64\\\" \\\"vcs-type\\\"=\\\"git\\\" \\\"vcs-ref\\\"=\\\"ddf3e9d218968613397a7b4df7547f25ad755449\\\" \\\"org.opencontainers.image.revision\\\"=\\\"ddf3e9d218968613397a7b4df7547f25ad755449\\\" \\\"build-date\\\"=\\\"2026-03-11T04:53:07Z\\\" \\\"org.opencontainers.image.created\\\"=\\\"2026-03-11T04:53:07Z\\\" \\\"release\\\"=\\\"1773204619\\\"org.opencontainers.image.revision=ddf3e9d218968613397a7b4df7547f25ad755449,org.opencontainers.image.created=2026-03-11T04:53:07Z\"},{\"created\":\"2026-03-18T10:16:24.9384184Z\",\"created_by\":\"/bin/sh -c #(nop) LABEL name=\\\"swgi-openshift\\\"       vendor=\\\"SWGI\\\"       version=\\\"0.1.0\\\"       release=\\\"1\\\"       summary=\\\"SWGI OpenShift authorization API\\\"       description=\\\"Production-oriented SWGI API service for OpenShift validation and deployment.\\\"\",\"comment\":\"FROM registry.access.redhat.com/ubi9/ubi-minimal:latest\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:16:24.959962867Z\",\"created_by\":\"/bin/sh -c #(nop) ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     PIP_NO_CACHE_DIR=1\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:16:24.980504624Z\",\"created_by\":\"/bin/sh -c #(nop) WORKDIR /opt/app-root/src\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:17:13.813830977Z\",\"created_by\":\"/bin/sh -c microdnf install -y python3.11 python3.11-pip shadow-utils \\u0026\\u0026 microdnf clean all\"},{\"created\":\"2026-03-18T10:17:14.493861717Z\",\"created_by\":\"/bin/sh -c ln -sf /usr/bin/python3.11 /usr/bin/python3 \\u0026\\u0026 ln -sf /usr/bin/pip3.11 /usr/bin/pip3\"},{\"created\":\"2026-03-18T10:17:15.508782792Z\",\"created_by\":\"/bin/sh -c #(nop) COPY dir:f625687b84374114d58538c0e8e3383042af8f109ad1d981a4c9164bd2478424 in /opt/app-root/src/swgi_core      \"},{\"created\":\"2026-03-18T10:17:16.121022225Z\",\"created_by\":\"/bin/sh -c #(nop) COPY dir:860322bd7754ef73cd4bdc13a867dda14d494324d553dccd988790627202feff in /opt/app-root/src/swgi-openshift      \"},{\"created\":\"2026-03-18T10:17:16.185462639Z\",\"created_by\":\"/bin/sh -c #(nop) WORKDIR /opt/app-root/src/swgi-openshift\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:17:40.710707993Z\",\"created_by\":\"/bin/sh -c pip3 install --upgrade pip \\u0026\\u0026 pip3 install -r requirements.txt\"},{\"created\":\"2026-03-18T10:17:42.022043018Z\",\"created_by\":\"/bin/sh -c useradd --uid 10001 --create-home --shell /sbin/nologin appuser \\u0026\\u0026     mkdir -p /tmp/secrets \\u0026\\u0026     chown -R 10001:0 /opt/app-root/src /tmp/secrets \\u0026\\u0026     chmod -R g=u /opt/app-root/src /tmp/secrets\"},{\"created\":\"2026-03-18T10:17:42.693020303Z\",\"created_by\":\"/bin/sh -c #(nop) USER 10001\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:17:42.712929866Z\",\"created_by\":\"/bin/sh -c #(nop) EXPOSE 8080\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:17:42.734470575Z\",\"created_by\":\"/bin/sh -c #(nop) HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD python3 -c \\\"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).read()\\\"\",\"empty_layer\":true},{\"created\":\"2026-03-18T10:17:42.756537942Z\",\"created_by\":\"/bin/sh -c #(nop) CMD [\\\"python3\\\", \\\"-m\\\", \\\"app.main\\\"]\",\"empty_layer\":true}]}",
+    "repositories": [
+        {
+            "published": false,
+            "push_date": "2026-03-18T20:05:51Z",
+            "registry": "quay.io",
+            "repository": "zohaib055/swgi-core",
+            "tags": [
+                {
+                    "added_date": "2026-03-18T20:05:51Z",
+                    "name": "0.1.0"
+                }
+            ]
+        }
+    ],
+    "sum_layer_size_bytes": 381753856,
+    "uncompressed_top_layer_id": "sha256:c7410a127a918b80107d9a2217152d5a03ecd574be33abc513393bf0d912b520"
+}

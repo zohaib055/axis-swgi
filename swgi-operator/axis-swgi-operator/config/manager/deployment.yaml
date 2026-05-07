@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-swgi-operator
+  namespace: swgi-system
+  labels:
+    app.kubernetes.io/name: axis-swgi-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: axis-swgi-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: axis-swgi-operator
+    spec:
+      serviceAccountName: axis-swgi-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: axis-swgi-operator
+          image: registry.connect.redhat.com/axissystems/axis-swgi-operator:0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RELATED_IMAGE_AXIS_SWGI_OPERATOR
+              value: quay.io/axis919/swgi-operator@sha256:77c36d4e55bffa70921e5e3d5321e9198c588c2891fbb460d1482f78d4ebd251
+            - name: RELATED_IMAGE_AXIS_SWGI_API
+              value: quay.io/axis919/swgi-core@sha256:3424029ec66f356d85d349c37b49fda137c4911d3b9490f630c9b30e83eef75c
+          command:
+            - kopf
+          args:
+            - run
+            - /opt/app-root/src/axis-swgi-operator/controller/main.py
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true

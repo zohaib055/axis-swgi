@@ -1,0 +1,28 @@
+# Commands derived from the successful root-level preflight run in ./preflight.log
+# Image seen in the log: quay.io/axis919/swgi-core:0.1.0
+# Platform seen in the log: arm64
+# Red Hat Connect component/project id inferred from the result URL: 69baa54c6a105b5f7ab59ba7
+
+# Optional: authenticate before push/submit
+podman login quay.io
+
+# Build and push the image that was certified in the root preflight log
+podman build --platform linux/arm64 -f swgi-openshift/Dockerfile -t quay.io/axis919/swgi-core:0.1.0 .
+podman push quay.io/axis919/swgi-core:0.1.0
+
+# Optional: keep artifacts in the same layout already present in this repo
+mkdir -p artifacts/arm64
+
+# Submit a fresh preflight run and capture the log at the repo root
+# Replace the token value with a valid Red Hat Pyxis API token before running
+export PFLT_PYXIS_API_TOKEN="replace-with-red-hat-pyxis-api-token"
+preflight check container quay.io/axis919/swgi-core:0.1.0 \
+  --platform arm64 \
+  --submit \
+  --certification-project-id 69baa54c6a105b5f7ab59ba7 \
+  --pyxis-api-token "${PFLT_PYXIS_API_TOKEN}" \
+  --artifacts artifacts/arm64 | tee preflight.log
+
+# Review the generated outputs
+tail -n 20 preflight.log
+cat artifacts/arm64/results.json

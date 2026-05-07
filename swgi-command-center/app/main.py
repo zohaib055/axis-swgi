@@ -1,0 +1,615 @@
+from __future__ import annotations
+
+import logging
+import time
+from pathlib import Path
+from typing import Any
+import uuid
+from collections import defaultdict, deque
+
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from prometheus_client import Counter, Histogram, generate_latest
+
+load_dotenv()
+
+from swgi_core.config import SWGIConfig
+from swgi_core.evaluator import SWGIEnforcementNode
+from swgi_core.policy_engine import PolicyEngine
+
+from swgi_core.signature import export_public_key_pem, load_private_key
+
+from .auth import (
+    AuthContext,
+    bearer_scheme,
+    require_cluster_operator,
+    require_org_access,
+    require_role,
+)
+from .config import settings
+from .db import CommandCenterStore
+from .logging_config import configure_logging
+from .models import (
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
+    ApiKeyResponse,
+    AuditLogResponse,
+    ClusterCreateRequest,
+    ClusterRegistrationResponse,
+    ClusterResponse,
+    ExecutionIntentRequest,
+    ExecutionResponse,
+    ExecutionStatusRequest,
+    IntentDecisionResponse,
+    OperatorHeartbeatRequest,
+    OperatorEventRequest,
+    OrgCreateRequest,
+    OrgResponse,
+    OrgUpdateRequest,
+    PlanResponse,
+    ReceiptListResponse,
+    UsageResponse,
+)
+from .receipts import metadata_receipt
+from .security import constant_time_equal, generate_api_token, hash_token
+
+configure_logging(settings.log_level, settings.log_format)
+logger = logging.getLogger("swgi_command_center")
+settings.validate_runtime()
+
+
+class Metrics:
+    def __init__(self) -> None:
+        self.intent_total = Counter("swgi_command_center_intents_total", "Total intent decisions", ["result"])
+        self.intent_total_by_scope = Counter(
+            "swgi_command_center_scoped_intents_total",
+            "Total intent decisions by org and cluster",
+            ["org_id", "cluster_id", "result"],
+        )
+        self.intent_latency = Histogram(
+            "swgi_command_center_intent_latency_ms",
+            "Intent decision latency (ms)",
+            buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000),
+        )
+
+    def observe_intent(self, latency_ms: float, result: str, org_id: str = "unknown", cluster_id: str = "unknown") -> None:
+        self.intent_total.labels(result=result).inc()
+        self.intent_total_by_scope.labels(org_id=org_id, cluster_id=cluster_id, result=result).inc()
+        self.intent_latency.observe(latency_ms)
+
+
+def _load_private_key_pem(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _load_policy_id(policy_path: str) -> str:
+    return PolicyEngine.from_file(policy_path).policy_id
+
+
+app = FastAPI(title="SWGI Command Center", version=settings.app_version)
+store = CommandCenterStore(settings.database_url)
+if settings.run_db_migrations:
+    store.initialize()
+
+policy_engine = PolicyEngine.from_file(settings.policy_path)
+config = SWGIConfig(
+    org_id=settings.org_id,
+    node_id=settings.command_center_id,
+    policy_id=_load_policy_id(settings.policy_path),
+)
+node = SWGIEnforcementNode(
+    config=config,
+    signing_private_key_pem=_load_private_key_pem(settings.signing_key_path),
+    policy_engine=policy_engine,
+)
+metrics = Metrics()
+rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+logger.info(
+    "swgi_command_center.started mode=%s command_center_id=%s org_id=%s receipt_store=postgres",
+    settings.swgi_mode,
+    settings.command_center_id,
+    settings.org_id,
+)
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next: Any) -> Any:
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    request.state.request_id = request_id
+
+    token = request.headers.get("authorization", "")
+    bucket_key = hash_token(token or request.client.host if request.client else "unknown", settings.api_key_hash_secret)
+    now = time.time()
+    bucket = rate_limit_buckets[bucket_key]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= settings.rate_limit_per_minute:
+        return JSONResponse(
+            {"detail": "Rate limit exceeded"},
+            status_code=429,
+            headers={"x-request-id": request_id},
+        )
+    bucket.append(now)
+
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    return response
+
+
+def get_auth_context(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthContext:
+    if credentials is None:
+        store.record_failed_auth(None, "missing_authorization_header", getattr(request.state, "request_id", None))
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    if credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
+        store.record_failed_auth(None, "invalid_bearer_header", getattr(request.state, "request_id", None))
+        raise HTTPException(status_code=401, detail="Invalid bearer token")
+
+    token = credentials.credentials.strip()
+    if constant_time_equal(token, settings.admin_api_token):
+        return AuthContext(role="platform_admin", token=token)
+    if constant_time_equal(token, settings.viewer_api_token):
+        return AuthContext(role="platform_viewer", token=token)
+
+    key = store.resolve_api_key(token)
+    if not key:
+        store.record_failed_auth(
+            hash_token(token, settings.api_key_hash_secret),
+            "unauthorized_token",
+            getattr(request.state, "request_id", None),
+        )
+        raise HTTPException(status_code=403, detail="Token is not authorized")
+    return AuthContext(
+        role=key["role"],
+        token=token,
+        org_id=key.get("org_id"),
+        cluster_id=key.get("cluster_id"),
+    )
+
+
+def _org_filter_for(auth: AuthContext, requested_org_id: str | None) -> str | None:
+    if auth.role in {"platform_admin", "platform_viewer"}:
+        return requested_org_id
+    if auth.role in {"org_admin", "org_viewer", "operator"}:
+        if requested_org_id and requested_org_id != auth.org_id:
+            raise HTTPException(status_code=403, detail="Org access denied")
+        return auth.org_id
+    raise HTTPException(status_code=403, detail="Role is not authorized")
+
+
+def _public_signing_key_pem() -> str:
+    private_key = load_private_key(_load_private_key_pem(settings.signing_key_path))
+    return export_public_key_pem(private_key)
+
+
+def _audit(
+    auth: AuthContext,
+    *,
+    action: str,
+    resource_type: str,
+    resource_id: str | None = None,
+    org_id: str | None = None,
+    cluster_id: str | None = None,
+    outcome: str = "success",
+    request: Request | None = None,
+) -> None:
+    store.persist_audit_log(
+        {
+            "org_id": org_id or auth.org_id,
+            "cluster_id": cluster_id or auth.cluster_id,
+            "actor_role": auth.role,
+            "actor_org_id": auth.org_id,
+            "actor_cluster_id": auth.cluster_id,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "outcome": outcome,
+            "request_id": getattr(request.state, "request_id", None) if request else None,
+        }
+    )
+
+
+@app.get("/v1/health")
+def health() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "mode": settings.swgi_mode,
+        "command_center_id": settings.command_center_id,
+        "policy_id": config.policy_id,
+        "receipt_store": "postgres",
+    }
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    return health()
+
+
+@app.get("/readyz")
+def readyz() -> dict[str, Any]:
+    try:
+        db_ok = store.health_check()
+    except Exception:
+        db_ok = False
+    if not db_ok:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"ok": True, "database": "ready"}
+
+
+@app.get("/metrics")
+def prometheus_metrics() -> PlainTextResponse:
+    if not settings.metrics_enabled:
+        raise HTTPException(status_code=404, detail="Metrics disabled")
+    return PlainTextResponse(generate_latest().decode("utf-8"), media_type="text/plain; version=0.0.4")
+
+
+@app.post("/v1/orgs", response_model=OrgResponse)
+def create_org(req: OrgCreateRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> OrgResponse:
+    require_role(auth, {"platform_admin"})
+    try:
+        org = store.create_org(req.model_dump(mode="json"))
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Org could not be created") from exc
+    _audit(auth, action="create_org", resource_type="org", resource_id=org["org_id"], org_id=org["org_id"], request=request)
+    return OrgResponse(**org)
+
+
+@app.get("/v1/orgs", response_model=list[OrgResponse])
+def list_orgs(
+    limit: int = 100,
+    offset: int = 0,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[OrgResponse]:
+    require_role(auth, {"platform_admin", "platform_viewer"})
+    return [OrgResponse(**org) for org in store.list_orgs(limit=limit, offset=offset)]
+
+
+@app.get("/v1/orgs/{org_id}", response_model=OrgResponse)
+def get_org(org_id: str, auth: AuthContext = Depends(get_auth_context)) -> OrgResponse:
+    require_org_access(auth, org_id)
+    org = store.get_org(org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Org not found")
+    return OrgResponse(**org)
+
+
+@app.patch("/v1/orgs/{org_id}", response_model=OrgResponse)
+def update_org(org_id: str, req: OrgUpdateRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> OrgResponse:
+    require_org_access(auth, org_id, write=True)
+    org = store.update_org(org_id, req.model_dump(exclude_unset=True, mode="json"))
+    if not org:
+        raise HTTPException(status_code=404, detail="Org not found")
+    _audit(auth, action="update_org", resource_type="org", resource_id=org_id, org_id=org_id, request=request)
+    return OrgResponse(**org)
+
+
+@app.post("/v1/orgs/{org_id}/api-keys", response_model=ApiKeyCreateResponse)
+def create_api_key(
+    org_id: str,
+    req: ApiKeyCreateRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> ApiKeyCreateResponse:
+    require_org_access(auth, org_id, write=True)
+    if req.role == "operator":
+        raise HTTPException(status_code=400, detail="Operator keys are generated through cluster registration")
+    if not store.get_org(org_id):
+        raise HTTPException(status_code=404, detail="Org not found")
+    token = generate_api_token("swgi_org")
+    api_key = store.create_api_key(
+        api_key_id=str(uuid.uuid4()),
+        org_id=org_id,
+        cluster_id=None,
+        key_name=req.key_name,
+        role=req.role,
+        token=token,
+        expires_at=req.expires_at.isoformat() if req.expires_at else None,
+    )
+    _audit(auth, action="create_api_key", resource_type="api_key", resource_id=api_key["api_key_id"], org_id=org_id, request=request)
+    return ApiKeyCreateResponse(api_key=ApiKeyResponse(**api_key), token=token)
+
+
+@app.get("/v1/orgs/{org_id}/api-keys", response_model=list[ApiKeyResponse])
+def list_api_keys(org_id: str, auth: AuthContext = Depends(get_auth_context)) -> list[ApiKeyResponse]:
+    require_org_access(auth, org_id, write=True)
+    return [ApiKeyResponse(**key) for key in store.list_api_keys(org_id)]
+
+
+@app.delete("/v1/orgs/{org_id}/api-keys/{api_key_id}")
+def revoke_api_key(org_id: str, api_key_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
+    require_org_access(auth, org_id, write=True)
+    if not store.revoke_api_key(org_id, api_key_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+    _audit(auth, action="revoke_api_key", resource_type="api_key", resource_id=api_key_id, org_id=org_id, request=request)
+    return {"status": "revoked"}
+
+
+@app.post("/v1/orgs/{org_id}/api-keys/{api_key_id}/rotate", response_model=ApiKeyCreateResponse)
+def rotate_api_key(org_id: str, api_key_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)) -> ApiKeyCreateResponse:
+    require_org_access(auth, org_id, write=True)
+    old_key = store.get_api_key(org_id, api_key_id)
+    if not old_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    if not store.revoke_api_key(org_id, api_key_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+    token = generate_api_token("swgi_operator" if old_key["role"] == "operator" else "swgi_org")
+    api_key = store.create_api_key(
+        api_key_id=str(uuid.uuid4()),
+        org_id=org_id,
+        cluster_id=old_key.get("cluster_id"),
+        key_name=f"{old_key['key_name']} rotated",
+        role=old_key["role"],
+        token=token,
+        rotated_from_api_key_id=api_key_id,
+    )
+    _audit(auth, action="rotate_api_key", resource_type="api_key", resource_id=api_key_id, org_id=org_id, request=request)
+    return ApiKeyCreateResponse(api_key=ApiKeyResponse(**api_key), token=token)
+
+
+@app.post("/v1/orgs/{org_id}/clusters", response_model=ClusterRegistrationResponse)
+def create_cluster(
+    org_id: str,
+    req: ClusterCreateRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> ClusterRegistrationResponse:
+    require_org_access(auth, org_id, write=True)
+    install_token = generate_api_token("swgi_operator")
+    cluster = store.create_cluster({**req.model_dump(mode="json"), "org_id": org_id}, install_token)
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Org not found")
+    store.create_api_key(
+        api_key_id=str(uuid.uuid4()),
+        org_id=org_id,
+        cluster_id=cluster["cluster_id"],
+        key_name=f"{cluster['cluster_id']} operator",
+        role="operator",
+        token=install_token,
+    )
+    _audit(auth, action="register_cluster", resource_type="cluster", resource_id=cluster["cluster_id"], org_id=org_id, cluster_id=cluster["cluster_id"], request=request)
+    install = {
+        "COMMAND_CENTER_URL": settings.command_center_url,
+        "ORG_ID": org_id,
+        "CLUSTER_ID": cluster["cluster_id"],
+        "OPERATOR_TOKEN": install_token,
+        "PUBLIC_SIGNING_KEY_PEM": _public_signing_key_pem(),
+    }
+    return ClusterRegistrationResponse(cluster=ClusterResponse(**cluster), install=install)
+
+
+@app.get("/v1/orgs/{org_id}/clusters", response_model=list[ClusterResponse])
+def list_org_clusters(org_id: str, auth: AuthContext = Depends(get_auth_context)) -> list[ClusterResponse]:
+    require_org_access(auth, org_id)
+    return [ClusterResponse(**cluster) for cluster in store.list_clusters(org_id=org_id)]
+
+
+@app.get("/v1/orgs/{org_id}/clusters/{cluster_id}", response_model=ClusterResponse)
+def get_cluster(org_id: str, cluster_id: str, auth: AuthContext = Depends(get_auth_context)) -> ClusterResponse:
+    require_org_access(auth, org_id)
+    cluster = store.get_cluster(org_id, cluster_id)
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return ClusterResponse(**cluster)
+
+
+@app.post("/v1/operator/heartbeat", response_model=ClusterResponse)
+def operator_heartbeat(
+    req: OperatorHeartbeatRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> ClusterResponse:
+    require_cluster_operator(auth, req.org_id, req.cluster_id)
+    cluster = store.record_heartbeat(req.model_dump(mode="json"))
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    _audit(auth, action="operator_heartbeat", resource_type="cluster", resource_id=req.cluster_id, org_id=req.org_id, cluster_id=req.cluster_id, request=request)
+    return ClusterResponse(**cluster)
+
+
+@app.post("/v1/intents", response_model=IntentDecisionResponse)
+def submit_intent(req: ExecutionIntentRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> IntentDecisionResponse:
+    require_org_access(auth, req.org_id, write=True)
+    t0 = time.perf_counter()
+    authority_role = "admin" if auth.role in {"platform_admin", "org_admin"} else auth.role
+    authority = {"role": authority_role, **req.authority}
+    context = {
+        "org_id": req.org_id,
+        "cluster_id": req.cluster_id,
+        "namespace": req.namespace,
+        "identity": req.identity,
+        **req.policy_context,
+    }
+    decision, base_receipt = node.evaluate(
+        intent=req.intent,
+        context=context,
+        action=req.action,
+        authority=authority,
+        workload_id=req.workload_id,
+    )
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    receipt = metadata_receipt(
+        base_receipt,
+        req,
+        elapsed_ms,
+        command_center_id=settings.command_center_id,
+    )
+    store.persist_receipt(receipt)
+    metrics.observe_intent(elapsed_ms, decision, org_id=req.org_id, cluster_id=req.cluster_id)
+
+    logger.info(
+        "intent.decided receipt_id=%s org_id=%s cluster_id=%s namespace=%s workload_id=%s decision=%s policy_id=%s",
+        receipt["receipt_id"],
+        receipt["org_id"],
+        receipt["cluster_id"],
+        receipt["namespace"],
+        receipt["workload_id"],
+        decision,
+        receipt["policy_id"],
+    )
+    _audit(auth, action="submit_intent", resource_type="receipt", resource_id=receipt["receipt_id"], org_id=req.org_id, cluster_id=req.cluster_id, request=request)
+    return IntentDecisionResponse(
+        result=decision,
+        reason=receipt["reason"],
+        receipt_id=receipt["receipt_id"],
+        cluster_id=receipt["cluster_id"],
+        namespace=receipt["namespace"],
+        workload_id=receipt["workload_id"],
+        expires_at=req.expiry_or_default(),
+        latency_ms=round(elapsed_ms, 4),
+    )
+
+
+@app.get("/v1/receipts/{receipt_id}")
+def get_receipt(receipt_id: str, auth: AuthContext = Depends(get_auth_context)) -> JSONResponse:
+    receipt = store.load_receipt(receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    require_org_access(auth, receipt["org_id"])
+    return JSONResponse(receipt)
+
+
+@app.get("/v1/receipts", response_model=ReceiptListResponse)
+def list_receipts(
+    org_id: str | None = None,
+    cluster_id: str | None = None,
+    namespace: str | None = None,
+    workload_id: str | None = None,
+    decision: str | None = None,
+    policy_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    auth: AuthContext = Depends(get_auth_context),
+) -> ReceiptListResponse:
+    scoped_org_id = _org_filter_for(auth, org_id)
+    scoped_cluster_id = auth.cluster_id if auth.role == "operator" else cluster_id
+    items = store.list_receipts(
+        org_id=scoped_org_id,
+        cluster_id=scoped_cluster_id,
+        namespace=namespace,
+        workload_id=workload_id,
+        decision=decision,
+        policy_id=policy_id,
+        limit=limit,
+        offset=offset,
+    )
+    return ReceiptListResponse(count=len(items), items=items)
+
+
+@app.get("/v1/usage", response_model=UsageResponse)
+def usage(org_id: str | None = None, auth: AuthContext = Depends(get_auth_context)) -> UsageResponse:
+    require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
+    scoped_org_id = _org_filter_for(auth, org_id)
+    return UsageResponse(**store.usage_summary(org_id=scoped_org_id))
+
+
+@app.get("/v1/clusters", response_model=list[ClusterResponse])
+def clusters(org_id: str | None = None, auth: AuthContext = Depends(get_auth_context)) -> list[ClusterResponse]:
+    scoped_org_id = _org_filter_for(auth, org_id)
+    clusters = store.list_clusters(org_id=scoped_org_id)
+    if auth.role == "operator":
+        clusters = [cluster for cluster in clusters if cluster["cluster_id"] == auth.cluster_id]
+    return [ClusterResponse(**cluster) for cluster in clusters]
+
+
+@app.get("/v1/policies")
+def policies(org_id: str | None = None, auth: AuthContext = Depends(get_auth_context)) -> list[dict[str, Any]]:
+    require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
+    scoped_org_id = _org_filter_for(auth, org_id)
+    return store.list_policies(org_id=scoped_org_id)
+
+
+@app.post("/v1/operator-events")
+def create_operator_event(req: OperatorEventRequest, auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
+    require_cluster_operator(auth, req.org_id, req.cluster_id)
+    store.persist_operator_event(req.model_dump(mode="json"))
+    return {"status": "accepted"}
+
+
+@app.get("/v1/operator/executions/pending", response_model=list[ExecutionResponse])
+def pending_executions(
+    limit: int = 25,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[ExecutionResponse]:
+    require_role(auth, {"operator"})
+    return [
+        ExecutionResponse(**item)
+        for item in store.list_pending_executions(auth.org_id or "", auth.cluster_id or "", limit=limit)
+    ]
+
+
+@app.post("/v1/operator/executions/{execution_id}/status", response_model=ExecutionResponse)
+def update_execution_status(
+    execution_id: str,
+    req: ExecutionStatusRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> ExecutionResponse:
+    require_role(auth, {"operator"})
+    execution = store.update_execution_status(
+        auth.org_id or "",
+        auth.cluster_id or "",
+        execution_id,
+        req.status,
+        req.error_code,
+        req.error_summary,
+    )
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    _audit(
+        auth,
+        action="update_execution_status",
+        resource_type="execution",
+        resource_id=execution_id,
+        org_id=auth.org_id,
+        cluster_id=auth.cluster_id,
+        request=request,
+    )
+    return ExecutionResponse(**execution)
+
+
+@app.get("/v1/plans", response_model=list[PlanResponse])
+def list_plans(auth: AuthContext = Depends(get_auth_context)) -> list[PlanResponse]:
+    require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
+    return [PlanResponse(**plan) for plan in store.list_plans()]
+
+
+@app.get("/v1/audit-logs", response_model=list[AuditLogResponse])
+def list_audit_logs(
+    org_id: str | None = None,
+    limit: int = 100,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[AuditLogResponse]:
+    scoped_org_id = _org_filter_for(auth, org_id)
+    require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
+    return [AuditLogResponse(**item) for item in store.list_audit_logs(org_id=scoped_org_id, limit=limit)]
+
+
+@app.get("/v1/operator-events")
+def operator_events(
+    receipt_id: str | None = None,
+    org_id: str | None = None,
+    cluster_id: str | None = None,
+    limit: int = 50,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[dict[str, Any]]:
+    scoped_org_id = _org_filter_for(auth, org_id)
+    scoped_cluster_id = cluster_id
+    if auth.role == "operator":
+        scoped_cluster_id = auth.cluster_id
+    return store.list_operator_events(
+        org_id=scoped_org_id,
+        cluster_id=scoped_cluster_id,
+        receipt_id=receipt_id,
+        limit=limit,
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host=settings.host, port=settings.port, reload=False)
