@@ -44,6 +44,9 @@ Completed
 - Deployment documentation.
 - Observability documentation.
 - Loveable UI prompt.
+- Modular Command Center architecture docs.
+- Feature module schema/model ownership.
+- SQLAlchemy ORM runtime repository replacing raw query repository.
 
 Still Remaining / Next Product Depth
 ------------------------------------

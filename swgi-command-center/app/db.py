@@ -1,129 +1,145 @@
 from __future__ import annotations
 
-import json
+from datetime import datetime, timezone
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from sqlalchemy import case, distinct, func, select
 
 from .config import settings
+from .database import create_session_factory, session_scope
 from .db_url import normalize_psycopg_dsn
 from .migrations import run_migrations
+from .orm import (
+    ApiKey,
+    AuditLog,
+    Cluster,
+    ExecutionRequest,
+    FailedAuthEvent,
+    Namespace,
+    OperatorEvent,
+    Organization,
+    Plan,
+    Policy,
+    TrustReceipt,
+    UsageMetering,
+)
 from .security import hash_token
+
+
+def _as_dict(model: Any, fields: tuple[str, ...]) -> dict[str, Any]:
+    return {field: getattr(model, field) for field in fields}
+
+
+ORG_FIELDS = ("org_id", "display_name", "status", "plan_code", "created_at", "updated_at")
+CLUSTER_FIELDS = (
+    "cluster_id",
+    "org_id",
+    "runtime",
+    "display_name",
+    "status",
+    "created_at",
+    "last_seen_at",
+    "health",
+    "operator_version",
+    "heartbeat_namespace",
+    "last_heartbeat_at",
+    "updated_at",
+)
+API_KEY_FIELDS = (
+    "api_key_id",
+    "org_id",
+    "cluster_id",
+    "key_name",
+    "role",
+    "status",
+    "created_at",
+    "expires_at",
+    "last_used_at",
+    "revoked_at",
+)
+EXECUTION_FIELDS = (
+    "execution_id",
+    "receipt_id",
+    "org_id",
+    "cluster_id",
+    "namespace",
+    "workload_id",
+    "action",
+    "decision",
+    "payload_hash",
+    "receipt_metadata",
+    "status",
+    "claimed_at",
+    "completed_at",
+    "error_code",
+    "error_summary",
+    "created_at",
+    "updated_at",
+)
 
 
 class CommandCenterStore:
     def __init__(self, dsn: str) -> None:
         self.dsn = normalize_psycopg_dsn(dsn)
-
-    def _connect(self) -> psycopg.Connection[Any]:
-        return psycopg.connect(
-            self.dsn,
-            row_factory=dict_row,
-            connect_timeout=settings.db_connect_timeout_seconds,
-        )
+        self.session_factory = create_session_factory(self.dsn)
 
     def initialize(self) -> None:
         run_migrations(self.dsn)
 
     def health_check(self) -> bool:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-                return cur.fetchone() is not None
+        with session_scope(self.session_factory) as session:
+            return session.execute(select(1)).scalar_one() == 1
 
     def resolve_api_key(self, token: str) -> dict[str, Any] | None:
         token_hash = hash_token(token, settings.api_key_hash_secret)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT api_key_id, org_id, cluster_id, key_name, role
-                    FROM api_keys
-                    WHERE token_hash = %s
-                      AND status = 'active'
-                      AND revoked_at IS NULL
-                      AND (expires_at IS NULL OR expires_at > NOW())
-                    """,
-                    (token_hash,),
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            api_key = session.scalars(
+                select(ApiKey).where(
+                    ApiKey.token_hash == token_hash,
+                    ApiKey.status == "active",
+                    ApiKey.revoked_at.is_(None),
+                    (ApiKey.expires_at.is_(None)) | (ApiKey.expires_at > now),
                 )
-                row = cur.fetchone()
-                if not row:
-                    return None
-                cur.execute("UPDATE api_keys SET last_used_at = NOW() WHERE api_key_id = %s", (row["api_key_id"],))
-            conn.commit()
-            return dict(row)
+            ).first()
+            if not api_key:
+                return None
+            api_key.last_used_at = now
+            return _as_dict(api_key, ("api_key_id", "org_id", "cluster_id", "key_name", "role"))
 
     def create_org(self, org: dict[str, Any]) -> dict[str, Any]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO organizations (org_id, display_name, status, plan_code)
-                    VALUES (%(org_id)s, %(display_name)s, %(status)s, %(plan_code)s)
-                    RETURNING org_id, display_name, status, plan_code, created_at, updated_at
-                    """,
-                    org,
-                )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row)
+        with session_scope(self.session_factory) as session:
+            organization = Organization(**org)
+            session.add(organization)
+            session.flush()
+            return _as_dict(organization, ORG_FIELDS)
 
     def get_org(self, org_id: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT org_id, display_name, status, plan_code, created_at, updated_at
-                    FROM organizations
-                    WHERE org_id = %s
-                    """,
-                    (org_id,),
-                )
-                row = cur.fetchone()
-                return dict(row) if row else None
+        with session_scope(self.session_factory) as session:
+            org = session.get(Organization, org_id)
+            return _as_dict(org, ORG_FIELDS) if org else None
 
     def list_orgs(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT org_id, display_name, status, plan_code, created_at, updated_at
-                    FROM organizations
-                    ORDER BY created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    (max(1, min(limit, 500)), max(0, offset)),
-                )
-                return [dict(row) for row in cur.fetchall()]
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(
+                select(Organization)
+                .order_by(Organization.created_at.desc())
+                .limit(max(1, min(limit, 500)))
+                .offset(max(0, offset))
+            ).all()
+            return [_as_dict(row, ORG_FIELDS) for row in rows]
 
     def update_org(self, org_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
-        current = self.get_org(org_id)
-        if not current:
-            return None
-        values = {
-            "org_id": org_id,
-            "display_name": patch.get("display_name", current.get("display_name")),
-            "status": patch.get("status", current.get("status")),
-            "plan_code": patch.get("plan_code", current.get("plan_code")),
-        }
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE organizations
-                    SET display_name = %(display_name)s,
-                        status = %(status)s,
-                        plan_code = %(plan_code)s,
-                        updated_at = NOW()
-                    WHERE org_id = %(org_id)s
-                    RETURNING org_id, display_name, status, plan_code, created_at, updated_at
-                    """,
-                    values,
-                )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row) if row else None
+        with session_scope(self.session_factory) as session:
+            org = session.get(Organization, org_id)
+            if not org:
+                return None
+            for field in ("display_name", "status", "plan_code"):
+                if field in patch:
+                    setattr(org, field, patch[field])
+            org.updated_at = datetime.now(tz=timezone.utc)
+            session.flush()
+            return _as_dict(org, ORG_FIELDS)
 
     def create_api_key(
         self,
@@ -138,253 +154,175 @@ class CommandCenterStore:
         rotated_from_api_key_id: str | None = None,
     ) -> dict[str, Any]:
         token_hash = hash_token(token, settings.api_key_hash_secret)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO api_keys (
-                        api_key_id, org_id, cluster_id, key_name, role, token_hash,
-                        expires_at, rotated_from_api_key_id
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING api_key_id, org_id, cluster_id, key_name, role, status,
-                              created_at, expires_at, last_used_at, revoked_at
-                    """,
-                    (
-                        api_key_id,
-                        org_id,
-                        cluster_id,
-                        key_name,
-                        role,
-                        token_hash,
-                        expires_at,
-                        rotated_from_api_key_id,
-                    ),
-                )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row)
+        with session_scope(self.session_factory) as session:
+            api_key = ApiKey(
+                api_key_id=api_key_id,
+                org_id=org_id,
+                cluster_id=cluster_id,
+                key_name=key_name,
+                role=role,
+                token_hash=token_hash,
+                expires_at=datetime.fromisoformat(expires_at) if expires_at else None,
+                rotated_from_api_key_id=rotated_from_api_key_id,
+            )
+            session.add(api_key)
+            session.flush()
+            return _as_dict(api_key, API_KEY_FIELDS)
 
     def list_api_keys(self, org_id: str) -> list[dict[str, Any]]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT api_key_id, org_id, cluster_id, key_name, role, status,
-                           created_at, expires_at, last_used_at, revoked_at
-                    FROM api_keys
-                    WHERE org_id = %s
-                    ORDER BY created_at DESC
-                    """,
-                    (org_id,),
-                )
-                return [dict(row) for row in cur.fetchall()]
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(
+                select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at.desc())
+            ).all()
+            return [_as_dict(row, API_KEY_FIELDS) for row in rows]
 
     def get_api_key(self, org_id: str, api_key_id: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT api_key_id, org_id, cluster_id, key_name, role, status,
-                           created_at, expires_at, last_used_at, revoked_at
-                    FROM api_keys
-                    WHERE org_id = %s AND api_key_id = %s
-                    """,
-                    (org_id, api_key_id),
-                )
-                row = cur.fetchone()
-                return dict(row) if row else None
+        with session_scope(self.session_factory) as session:
+            api_key = session.scalars(
+                select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.api_key_id == api_key_id)
+            ).first()
+            return _as_dict(api_key, API_KEY_FIELDS) if api_key else None
 
     def revoke_api_key(self, org_id: str, api_key_id: str) -> bool:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE api_keys
-                    SET status = 'revoked', revoked_at = NOW()
-                    WHERE org_id = %s AND api_key_id = %s AND revoked_at IS NULL
-                    """,
-                    (org_id, api_key_id),
+        with session_scope(self.session_factory) as session:
+            api_key = session.scalars(
+                select(ApiKey).where(
+                    ApiKey.org_id == org_id,
+                    ApiKey.api_key_id == api_key_id,
+                    ApiKey.revoked_at.is_(None),
                 )
-                updated = cur.rowcount > 0
-            conn.commit()
-            return updated
-
-    def rotate_api_key(self, org_id: str, api_key_id: str, token: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT org_id, cluster_id, key_name, role
-                    FROM api_keys
-                    WHERE org_id = %s AND api_key_id = %s AND revoked_at IS NULL
-                    """,
-                    (org_id, api_key_id),
-                )
-                old = cur.fetchone()
-                if not old:
-                    return None
-                cur.execute(
-                    """
-                    UPDATE api_keys
-                    SET status = 'rotated', revoked_at = NOW(), updated_at = NOW()
-                    WHERE api_key_id = %s
-                    """,
-                    (api_key_id,),
-                )
-                new_key = self.create_api_key(
-                    api_key_id=f"{api_key_id}-r",
-                    org_id=old["org_id"],
-                    cluster_id=old["cluster_id"],
-                    key_name=f"{old['key_name']} rotated",
-                    role=old["role"],
-                    token=token,
-                    rotated_from_api_key_id=api_key_id,
-                )
-            conn.commit()
-            return new_key
+            ).first()
+            if not api_key:
+                return False
+            api_key.status = "revoked"
+            api_key.revoked_at = datetime.now(tz=timezone.utc)
+            api_key.updated_at = datetime.now(tz=timezone.utc)
+            return True
 
     def create_cluster(self, cluster: dict[str, Any], install_token: str) -> dict[str, Any]:
         install_token_hash = hash_token(install_token, settings.api_key_hash_secret)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT org_id FROM organizations WHERE org_id = %s", (cluster["org_id"],))
-                if not cur.fetchone():
-                    return {}
-                cur.execute(
-                    """
-                    INSERT INTO clusters (
-                        cluster_id, org_id, runtime, display_name, status, install_token_hash
-                    ) VALUES (
-                        %(cluster_id)s, %(org_id)s, %(runtime)s, %(display_name)s, 'pending', %(install_token_hash)s
-                    )
-                    RETURNING cluster_id, org_id, runtime, display_name, status, created_at,
-                              last_seen_at, health, operator_version, heartbeat_namespace,
-                              last_heartbeat_at, updated_at
-                    """,
-                    {**cluster, "install_token_hash": install_token_hash},
-                )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row) if row else {}
+        with session_scope(self.session_factory) as session:
+            if not session.get(Organization, cluster["org_id"]):
+                return {}
+            row = Cluster(
+                cluster_id=cluster["cluster_id"],
+                org_id=cluster["org_id"],
+                runtime=cluster["runtime"],
+                display_name=cluster["display_name"],
+                status="pending",
+                install_token_hash=install_token_hash,
+            )
+            session.add(row)
+            session.flush()
+            return _as_dict(row, CLUSTER_FIELDS)
 
     def get_cluster(self, org_id: str, cluster_id: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT cluster_id, org_id, runtime, display_name, status, created_at,
-                           last_seen_at, health, operator_version, heartbeat_namespace,
-                           last_heartbeat_at, updated_at
-                    FROM clusters
-                    WHERE org_id = %s AND cluster_id = %s
-                    """,
-                    (org_id, cluster_id),
-                )
-                row = cur.fetchone()
-                return dict(row) if row else None
+        with session_scope(self.session_factory) as session:
+            cluster = session.scalars(
+                select(Cluster).where(Cluster.org_id == org_id, Cluster.cluster_id == cluster_id)
+            ).first()
+            return _as_dict(cluster, CLUSTER_FIELDS) if cluster else None
 
     def persist_receipt(self, receipt: dict[str, Any]) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO organizations (org_id, status, plan_code)
-                    VALUES (%s, 'active', 'starter')
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (receipt["org_id"],),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO clusters (cluster_id, org_id, runtime, last_seen_at)
-                    VALUES (%s, %s, %s, NOW())
-                    ON CONFLICT (cluster_id) DO UPDATE SET last_seen_at = NOW(), status = 'active'
-                    """,
-                    (receipt["cluster_id"], receipt["org_id"], receipt.get("runtime", "kubernetes")),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO namespaces (org_id, cluster_id, namespace)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (receipt["org_id"], receipt["cluster_id"], receipt["namespace"]),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO policies (policy_id, org_id, version)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (receipt["policy_id"], receipt["org_id"], receipt.get("schema_version")),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO trust_receipts (
-                        receipt_id, org_id, cluster_id, namespace, workload_id, action, decision,
-                        reason, policy_id, payload_hash, authority_token_hash, signature,
-                        signature_algorithm, integrity_classification, created_at, expires_at,
-                        latency_ms, receipt_metadata
-                    ) VALUES (
-                        %(receipt_id)s, %(org_id)s, %(cluster_id)s, %(namespace)s, %(workload_id)s,
-                        %(action)s, %(decision)s, %(reason)s, %(policy_id)s, %(payload_hash)s,
-                        %(authority_token_hash)s, %(signature)s, %(signature_algorithm)s,
-                        %(integrity_classification)s, %(created_at)s, %(expires_at)s,
-                        %(latency_ms)s, %(receipt_metadata)s::jsonb
+        with session_scope(self.session_factory) as session:
+            org = session.get(Organization, receipt["org_id"])
+            if not org:
+                session.add(Organization(org_id=receipt["org_id"], status="active", plan_code="starter"))
+
+            cluster = session.get(Cluster, receipt["cluster_id"])
+            now = datetime.now(tz=timezone.utc)
+            if not cluster:
+                session.add(
+                    Cluster(
+                        cluster_id=receipt["cluster_id"],
+                        org_id=receipt["org_id"],
+                        runtime=receipt.get("runtime", "kubernetes"),
+                        status="active",
+                        last_seen_at=now,
                     )
-                    ON CONFLICT (receipt_id) DO NOTHING
-                    """,
-                    {
-                        **receipt,
-                        "receipt_metadata": json.dumps(receipt, separators=(",", ":"), ensure_ascii=False),
-                    },
                 )
-                if receipt["decision"] in {"ALLOW", "MODIFY"}:
-                    cur.execute(
-                        """
-                        INSERT INTO execution_requests (
-                            execution_id, receipt_id, org_id, cluster_id, namespace,
-                            workload_id, action, decision, payload_hash, receipt_metadata
-                        ) VALUES (
-                            %(execution_id)s, %(receipt_id)s, %(org_id)s, %(cluster_id)s,
-                            %(namespace)s, %(workload_id)s, %(action)s, %(decision)s,
-                            %(payload_hash)s, %(receipt_metadata)s::jsonb
-                        )
-                        ON CONFLICT (execution_id) DO NOTHING
-                        """,
-                        {
-                            **receipt,
-                            "execution_id": receipt["receipt_id"],
-                            "receipt_metadata": json.dumps(receipt, separators=(",", ":"), ensure_ascii=False),
-                        },
+            else:
+                cluster.status = "active"
+                cluster.last_seen_at = now
+
+            namespace_key = {"cluster_id": receipt["cluster_id"], "namespace": receipt["namespace"]}
+            if not session.get(Namespace, namespace_key):
+                session.add(
+                    Namespace(
+                        org_id=receipt["org_id"],
+                        cluster_id=receipt["cluster_id"],
+                        namespace=receipt["namespace"],
                     )
-                cur.execute(
-                    """
-                    INSERT INTO usage_metering (org_id, cluster_id, namespace, receipt_id, decision, billable)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (
-                        receipt["org_id"],
-                        receipt["cluster_id"],
-                        receipt["namespace"],
-                        receipt["receipt_id"],
-                        receipt["decision"],
-                        receipt["decision"] == "ALLOW",
-                    ),
                 )
-            conn.commit()
+
+            if not session.get(Policy, receipt["policy_id"]):
+                session.add(
+                    Policy(
+                        policy_id=receipt["policy_id"],
+                        org_id=receipt["org_id"],
+                        version=receipt.get("schema_version"),
+                    )
+                )
+
+            if not session.get(TrustReceipt, receipt["receipt_id"]):
+                session.add(
+                    TrustReceipt(
+                        receipt_id=receipt["receipt_id"],
+                        org_id=receipt["org_id"],
+                        cluster_id=receipt["cluster_id"],
+                        namespace=receipt["namespace"],
+                        workload_id=receipt["workload_id"],
+                        action=receipt["action"],
+                        decision=receipt["decision"],
+                        reason=receipt.get("reason"),
+                        policy_id=receipt["policy_id"],
+                        payload_hash=receipt["payload_hash"],
+                        authority_token_hash=receipt["authority_token_hash"],
+                        signature=receipt["signature"],
+                        signature_algorithm=receipt["signature_algorithm"],
+                        integrity_classification=receipt.get("integrity_classification"),
+                        created_at=datetime.fromisoformat(receipt["created_at"]),
+                        expires_at=datetime.fromisoformat(receipt["expires_at"]),
+                        latency_ms=receipt.get("latency_ms"),
+                        receipt_metadata=receipt,
+                    )
+                )
+
+            if receipt["decision"] in {"ALLOW", "MODIFY"} and not session.get(ExecutionRequest, receipt["receipt_id"]):
+                session.add(
+                    ExecutionRequest(
+                        execution_id=receipt["receipt_id"],
+                        receipt_id=receipt["receipt_id"],
+                        org_id=receipt["org_id"],
+                        cluster_id=receipt["cluster_id"],
+                        namespace=receipt["namespace"],
+                        workload_id=receipt["workload_id"],
+                        action=receipt["action"],
+                        decision=receipt["decision"],
+                        payload_hash=receipt["payload_hash"],
+                        receipt_metadata=receipt,
+                    )
+                )
+
+            exists_usage = session.scalars(
+                select(UsageMetering).where(UsageMetering.receipt_id == receipt["receipt_id"])
+            ).first()
+            if not exists_usage:
+                session.add(
+                    UsageMetering(
+                        org_id=receipt["org_id"],
+                        cluster_id=receipt["cluster_id"],
+                        namespace=receipt["namespace"],
+                        receipt_id=receipt["receipt_id"],
+                        decision=receipt["decision"],
+                        billable=receipt["decision"] == "ALLOW",
+                    )
+                )
 
     def load_receipt(self, receipt_id: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT receipt_metadata FROM trust_receipts WHERE receipt_id = %s", (receipt_id,))
-                row = cur.fetchone()
-                if not row:
-                    return None
-                value = row["receipt_metadata"]
-                return json.loads(value) if isinstance(value, str) else dict(value)
+        with session_scope(self.session_factory) as session:
+            receipt = session.get(TrustReceipt, receipt_id)
+            return dict(receipt.receipt_metadata) if receipt else None
 
     def list_receipts(
         self,
@@ -398,153 +336,127 @@ class CommandCenterStore:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        where: list[str] = []
-        params: list[Any] = []
-        for column, value in (
-            ("org_id", org_id),
-            ("cluster_id", cluster_id),
-            ("namespace", namespace),
-            ("workload_id", workload_id),
-            ("decision", decision.upper() if decision else None),
-            ("policy_id", policy_id),
-        ):
-            if value:
-                where.append(f"{column} = %s")
-                params.append(value)
-        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
-        params.extend([max(1, min(limit, 500)), max(0, offset)])
-        sql = f"""
-            SELECT receipt_id, org_id, cluster_id, namespace, workload_id, action, decision,
-                   reason, policy_id, payload_hash, integrity_classification, created_at,
-                   expires_at, latency_ms
-            FROM trust_receipts
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT %s OFFSET %s
-        """
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                return [dict(row) for row in cur.fetchall()]
+        stmt = select(TrustReceipt)
+        if org_id:
+            stmt = stmt.where(TrustReceipt.org_id == org_id)
+        if cluster_id:
+            stmt = stmt.where(TrustReceipt.cluster_id == cluster_id)
+        if namespace:
+            stmt = stmt.where(TrustReceipt.namespace == namespace)
+        if workload_id:
+            stmt = stmt.where(TrustReceipt.workload_id == workload_id)
+        if decision:
+            stmt = stmt.where(TrustReceipt.decision == decision.upper())
+        if policy_id:
+            stmt = stmt.where(TrustReceipt.policy_id == policy_id)
+        stmt = stmt.order_by(TrustReceipt.created_at.desc()).limit(max(1, min(limit, 500))).offset(max(0, offset))
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(stmt).all()
+            return [
+                {
+                    "receipt_id": row.receipt_id,
+                    "org_id": row.org_id,
+                    "cluster_id": row.cluster_id,
+                    "namespace": row.namespace,
+                    "workload_id": row.workload_id,
+                    "action": row.action,
+                    "decision": row.decision,
+                    "reason": row.reason,
+                    "policy_id": row.policy_id,
+                    "payload_hash": row.payload_hash,
+                    "integrity_classification": row.integrity_classification,
+                    "created_at": row.created_at,
+                    "expires_at": row.expires_at,
+                    "latency_ms": row.latency_ms,
+                }
+                for row in rows
+            ]
 
     def usage_summary(self, org_id: str | None = None) -> dict[str, int]:
-        where = "WHERE org_id = %s" if org_id else ""
-        params = [org_id] if org_id else []
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT
-                        COUNT(*)::int AS total_executions,
-                        COUNT(*) FILTER (WHERE decision = 'ALLOW')::int AS allowed_executions,
-                        COUNT(*) FILTER (WHERE decision = 'DENY')::int AS denied_attempts,
-                        COUNT(*) FILTER (WHERE decision = 'MODIFY')::int AS modified_executions,
-                        COUNT(DISTINCT cluster_id)::int AS cluster_count,
-                        COUNT(DISTINCT namespace)::int AS namespace_count
-                    FROM usage_metering
-                    {where}
-                    """,
-                    params,
-                )
-                row = cur.fetchone() or {}
-                return {
-                    "total_executions": row.get("total_executions", 0),
-                    "allowed_executions": row.get("allowed_executions", 0),
-                    "denied_attempts": row.get("denied_attempts", 0),
-                    "modified_executions": row.get("modified_executions", 0),
-                    "cluster_count": row.get("cluster_count", 0),
-                    "namespace_count": row.get("namespace_count", 0),
-                }
+        stmt = select(
+            func.count(UsageMetering.id).label("total_executions"),
+            func.sum(case((UsageMetering.decision == "ALLOW", 1), else_=0)).label("allowed_executions"),
+            func.sum(case((UsageMetering.decision == "DENY", 1), else_=0)).label("denied_attempts"),
+            func.sum(case((UsageMetering.decision == "MODIFY", 1), else_=0)).label("modified_executions"),
+            func.count(distinct(UsageMetering.cluster_id)).label("cluster_count"),
+            func.count(distinct(UsageMetering.namespace)).label("namespace_count"),
+        )
+        if org_id:
+            stmt = stmt.where(UsageMetering.org_id == org_id)
+        with session_scope(self.session_factory) as session:
+            row = session.execute(stmt).one()
+            return {
+                "total_executions": int(row.total_executions or 0),
+                "allowed_executions": int(row.allowed_executions or 0),
+                "denied_attempts": int(row.denied_attempts or 0),
+                "modified_executions": int(row.modified_executions or 0),
+                "cluster_count": int(row.cluster_count or 0),
+                "namespace_count": int(row.namespace_count or 0),
+            }
 
     def list_clusters(self, org_id: str | None = None) -> list[dict[str, Any]]:
-        where = "WHERE org_id = %s" if org_id else ""
-        params = [org_id] if org_id else []
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT cluster_id, org_id, runtime, display_name, status, created_at,
-                           last_seen_at, health, operator_version, heartbeat_namespace,
-                           last_heartbeat_at, updated_at
-                    FROM clusters
-                    {where}
-                    ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
-                    """,
-                    params,
-                )
-                return [dict(row) for row in cur.fetchall()]
+        stmt = select(Cluster)
+        if org_id:
+            stmt = stmt.where(Cluster.org_id == org_id)
+        stmt = stmt.order_by(Cluster.last_seen_at.desc().nullslast(), Cluster.created_at.desc())
+        with session_scope(self.session_factory) as session:
+            return [_as_dict(row, CLUSTER_FIELDS) for row in session.scalars(stmt).all()]
 
     def list_policies(self, org_id: str | None = None) -> list[dict[str, Any]]:
-        where = "WHERE org_id = %s" if org_id else ""
-        params = [org_id] if org_id else []
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT policy_id, org_id, version, active, created_at FROM policies {where} ORDER BY created_at DESC",
-                    params,
-                )
-                return [dict(row) for row in cur.fetchall()]
+        stmt = select(Policy)
+        if org_id:
+            stmt = stmt.where(Policy.org_id == org_id)
+        stmt = stmt.order_by(Policy.created_at.desc())
+        with session_scope(self.session_factory) as session:
+            return [
+                {
+                    "policy_id": row.policy_id,
+                    "org_id": row.org_id,
+                    "version": row.version,
+                    "active": row.active,
+                    "created_at": row.created_at,
+                }
+                for row in session.scalars(stmt).all()
+            ]
 
     def persist_operator_event(self, event: dict[str, Any]) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO operator_events (
-                        org_id, receipt_id, cluster_id, namespace, workload_id, enforcement_status,
-                        error_code, error_summary, operator_version
-                    ) VALUES (
-                        %(org_id)s, %(receipt_id)s, %(cluster_id)s, %(namespace)s, %(workload_id)s,
-                        %(enforcement_status)s, %(error_code)s, %(error_summary)s,
-                        %(operator_version)s
-                    )
-                    """,
-                    event,
-                )
-            conn.commit()
+        with session_scope(self.session_factory) as session:
+            session.add(OperatorEvent(**event))
 
     def record_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE clusters
-                    SET status = 'active',
-                        health = %(health)s,
-                        operator_version = %(operator_version)s,
-                        heartbeat_namespace = %(namespace)s,
-                        last_heartbeat_at = NOW(),
-                        last_seen_at = NOW(),
-                        updated_at = NOW()
-                    WHERE org_id = %(org_id)s AND cluster_id = %(cluster_id)s
-                    RETURNING cluster_id, org_id, runtime, display_name, status, created_at,
-                              last_seen_at, health, operator_version, heartbeat_namespace,
-                              last_heartbeat_at, updated_at
-                    """,
-                    heartbeat,
+        with session_scope(self.session_factory) as session:
+            cluster = session.scalars(
+                select(Cluster).where(
+                    Cluster.org_id == heartbeat["org_id"],
+                    Cluster.cluster_id == heartbeat["cluster_id"],
                 )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row) if row else None
+            ).first()
+            if not cluster:
+                return None
+            now = datetime.now(tz=timezone.utc)
+            cluster.status = "active"
+            cluster.health = heartbeat["health"]
+            cluster.operator_version = heartbeat["operator_version"]
+            cluster.heartbeat_namespace = heartbeat["namespace"]
+            cluster.last_heartbeat_at = now
+            cluster.last_seen_at = now
+            cluster.updated_at = now
+            session.flush()
+            return _as_dict(cluster, CLUSTER_FIELDS)
 
     def list_pending_executions(self, org_id: str, cluster_id: str, limit: int = 25) -> list[dict[str, Any]]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT execution_id, receipt_id, org_id, cluster_id, namespace, workload_id,
-                           action, decision, payload_hash, receipt_metadata, status, claimed_at,
-                           completed_at, error_code, error_summary, created_at, updated_at
-                    FROM execution_requests
-                    WHERE org_id = %s
-                      AND cluster_id = %s
-                      AND status = 'pending'
-                    ORDER BY created_at ASC
-                    LIMIT %s
-                    """,
-                    (org_id, cluster_id, max(1, min(limit, 100))),
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(
+                select(ExecutionRequest)
+                .where(
+                    ExecutionRequest.org_id == org_id,
+                    ExecutionRequest.cluster_id == cluster_id,
+                    ExecutionRequest.status == "pending",
                 )
-                return [dict(row) for row in cur.fetchall()]
+                .order_by(ExecutionRequest.created_at.asc())
+                .limit(max(1, min(limit, 100)))
+            ).all()
+            return [_as_dict(row, EXECUTION_FIELDS) for row in rows]
 
     def update_execution_status(
         self,
@@ -555,94 +467,74 @@ class CommandCenterStore:
         error_code: str | None = None,
         error_summary: str | None = None,
     ) -> dict[str, Any] | None:
-        claimed_expr = "NOW()" if status in {"claimed", "running"} else "claimed_at"
-        completed_expr = "NOW()" if status in {"succeeded", "failed", "rejected"} else "completed_at"
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    UPDATE execution_requests
-                    SET status = %s,
-                        claimed_at = {claimed_expr},
-                        completed_at = {completed_expr},
-                        error_code = %s,
-                        error_summary = %s,
-                        updated_at = NOW()
-                    WHERE org_id = %s
-                      AND cluster_id = %s
-                      AND execution_id = %s
-                    RETURNING execution_id, receipt_id, org_id, cluster_id, namespace, workload_id,
-                              action, decision, payload_hash, receipt_metadata, status, claimed_at,
-                              completed_at, error_code, error_summary, created_at, updated_at
-                    """,
-                    (status, error_code, error_summary, org_id, cluster_id, execution_id),
+        with session_scope(self.session_factory) as session:
+            execution = session.scalars(
+                select(ExecutionRequest).where(
+                    ExecutionRequest.org_id == org_id,
+                    ExecutionRequest.cluster_id == cluster_id,
+                    ExecutionRequest.execution_id == execution_id,
                 )
-                row = cur.fetchone()
-            conn.commit()
-            return dict(row) if row else None
+            ).first()
+            if not execution:
+                return None
+            now = datetime.now(tz=timezone.utc)
+            execution.status = status
+            if status in {"claimed", "running"}:
+                execution.claimed_at = now
+            if status in {"succeeded", "failed", "rejected"}:
+                execution.completed_at = now
+            execution.error_code = error_code
+            execution.error_summary = error_summary
+            execution.updated_at = now
+            session.flush()
+            return _as_dict(execution, EXECUTION_FIELDS)
 
     def list_plans(self) -> list[dict[str, Any]]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT plan_code, display_name, monthly_execution_limit, cluster_limit,
-                           namespace_limit, retention_days
-                    FROM plans
-                    ORDER BY created_at ASC
-                    """
-                )
-                return [dict(row) for row in cur.fetchall()]
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(select(Plan).order_by(Plan.created_at.asc())).all()
+            return [
+                {
+                    "plan_code": row.plan_code,
+                    "display_name": row.display_name,
+                    "monthly_execution_limit": row.monthly_execution_limit,
+                    "cluster_limit": row.cluster_limit,
+                    "namespace_limit": row.namespace_limit,
+                    "retention_days": row.retention_days,
+                }
+                for row in rows
+            ]
 
     def persist_audit_log(self, event: dict[str, Any]) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO audit_logs (
-                        org_id, cluster_id, actor_role, actor_org_id, actor_cluster_id,
-                        action, resource_type, resource_id, outcome, request_id
-                    ) VALUES (
-                        %(org_id)s, %(cluster_id)s, %(actor_role)s, %(actor_org_id)s,
-                        %(actor_cluster_id)s, %(action)s, %(resource_type)s, %(resource_id)s,
-                        %(outcome)s, %(request_id)s
-                    )
-                    """,
-                    event,
-                )
-            conn.commit()
+        with session_scope(self.session_factory) as session:
+            session.add(AuditLog(**event))
 
     def list_audit_logs(self, org_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
-        where = "WHERE org_id = %s" if org_id else ""
-        params: list[Any] = [org_id] if org_id else []
-        params.append(max(1, min(limit, 500)))
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT audit_id, org_id, cluster_id, actor_role, actor_org_id,
-                           actor_cluster_id, action, resource_type, resource_id,
-                           outcome, request_id, created_at
-                    FROM audit_logs
-                    {where}
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    params,
-                )
-                return [dict(row) for row in cur.fetchall()]
+        stmt = select(AuditLog)
+        if org_id:
+            stmt = stmt.where(AuditLog.org_id == org_id)
+        stmt = stmt.order_by(AuditLog.created_at.desc()).limit(max(1, min(limit, 500)))
+        with session_scope(self.session_factory) as session:
+            return [
+                {
+                    "audit_id": row.audit_id,
+                    "org_id": row.org_id,
+                    "cluster_id": row.cluster_id,
+                    "actor_role": row.actor_role,
+                    "actor_org_id": row.actor_org_id,
+                    "actor_cluster_id": row.actor_cluster_id,
+                    "action": row.action,
+                    "resource_type": row.resource_type,
+                    "resource_id": row.resource_id,
+                    "outcome": row.outcome,
+                    "request_id": row.request_id,
+                    "created_at": row.created_at,
+                }
+                for row in session.scalars(stmt).all()
+            ]
 
     def record_failed_auth(self, token_hash: str | None, reason: str, request_id: str | None = None) -> None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO failed_auth_events (token_hash, reason, request_id)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (token_hash, reason, request_id),
-                )
-            conn.commit()
+        with session_scope(self.session_factory) as session:
+            session.add(FailedAuthEvent(token_hash=token_hash, reason=reason, request_id=request_id))
 
     def list_operator_events(
         self,
@@ -652,30 +544,27 @@ class CommandCenterStore:
         receipt_id: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        where: list[str] = []
-        params: list[Any] = []
+        stmt = select(OperatorEvent)
         if org_id:
-            where.append("org_id = %s")
-            params.append(org_id)
+            stmt = stmt.where(OperatorEvent.org_id == org_id)
         if cluster_id:
-            where.append("cluster_id = %s")
-            params.append(cluster_id)
+            stmt = stmt.where(OperatorEvent.cluster_id == cluster_id)
         if receipt_id:
-            where.append("receipt_id = %s")
-            params.append(receipt_id)
-        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
-        params.append(max(1, min(limit, 500)))
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT org_id, receipt_id, cluster_id, namespace, workload_id, enforcement_status,
-                           error_code, error_summary, operator_version, created_at
-                    FROM operator_events
-                    {where_clause}
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    params,
-                )
-                return [dict(row) for row in cur.fetchall()]
+            stmt = stmt.where(OperatorEvent.receipt_id == receipt_id)
+        stmt = stmt.order_by(OperatorEvent.created_at.desc()).limit(max(1, min(limit, 500)))
+        with session_scope(self.session_factory) as session:
+            return [
+                {
+                    "org_id": row.org_id,
+                    "receipt_id": row.receipt_id,
+                    "cluster_id": row.cluster_id,
+                    "namespace": row.namespace,
+                    "workload_id": row.workload_id,
+                    "enforcement_status": row.enforcement_status,
+                    "error_code": row.error_code,
+                    "error_summary": row.error_summary,
+                    "operator_version": row.operator_version,
+                    "created_at": row.created_at,
+                }
+                for row in session.scalars(stmt).all()
+            ]

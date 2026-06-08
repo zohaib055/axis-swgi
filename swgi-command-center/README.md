@@ -158,6 +158,8 @@ poetry run pytest
 ## Production Docs
 
 - Operator contract: `docs/OPERATOR_CONTRACT.md`
+- Architecture: `docs/ARCHITECTURE.md`
+- Component alignment: `docs/ALIGNMENT.md`
 - Deployment: `docs/DEPLOYMENT.md`
 - Observability: `docs/OBSERVABILITY.md`
 - Security: `docs/SECURITY.md`
