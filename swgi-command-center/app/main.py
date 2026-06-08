@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 import uuid
 from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -43,6 +44,8 @@ from .models import (
     ExecutionResponse,
     ExecutionStatusRequest,
     IntentDecisionResponse,
+    LoginRequest,
+    LoginResponse,
     OperatorHeartbeatRequest,
     OperatorEventRequest,
     OrgCreateRequest,
@@ -51,9 +54,11 @@ from .models import (
     PlanResponse,
     ReceiptListResponse,
     UsageResponse,
+    UserCreateRequest,
+    UserResponse,
 )
 from .receipts import metadata_receipt
-from .security import constant_time_equal, generate_api_token, hash_token
+from .security import constant_time_equal, generate_api_token, hash_password, hash_token, verify_password
 
 configure_logging(settings.log_level, settings.log_format)
 logger = logging.getLogger("swgi_command_center")
@@ -156,6 +161,16 @@ def get_auth_context(
     if constant_time_equal(token, settings.viewer_api_token):
         return AuthContext(role="platform_viewer", token=token)
 
+    session = store.resolve_user_session(token)
+    if session:
+        return AuthContext(
+            role=session["role"],
+            token=token,
+            org_id=session.get("org_id"),
+            user_id=session.get("user_id"),
+            email=session.get("email"),
+        )
+
     key = store.resolve_api_key(token)
     if not key:
         store.record_failed_auth(
@@ -169,6 +184,27 @@ def get_auth_context(
         token=token,
         org_id=key.get("org_id"),
         cluster_id=key.get("cluster_id"),
+    )
+
+
+def _validate_user_role_scope(role: str, org_id: str | None) -> None:
+    if role in {"platform_admin", "platform_viewer"} and org_id:
+        raise HTTPException(status_code=400, detail="Platform users cannot be scoped to an org")
+    if role in {"org_admin", "org_viewer", "operator"} and not org_id:
+        raise HTTPException(status_code=400, detail="Org-scoped users require org_id")
+
+
+def _user_response_for_auth(auth: AuthContext) -> UserResponse:
+    return UserResponse(
+        user_id=auth.user_id or "bootstrap",
+        email=auth.email or f"{auth.role}@bootstrap.swgi.local",
+        display_name="Bootstrap token" if not auth.user_id else None,
+        role=auth.role,
+        org_id=auth.org_id,
+        status="active",
+        created_at=None,
+        updated_at=None,
+        last_login_at=None,
     )
 
 
@@ -246,6 +282,81 @@ def prometheus_metrics() -> PlainTextResponse:
     if not settings.metrics_enabled:
         raise HTTPException(status_code=404, detail="Metrics disabled")
     return PlainTextResponse(generate_latest().decode("utf-8"), media_type="text/plain; version=0.0.4")
+
+
+@app.post("/v1/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest, request: Request) -> LoginResponse:
+    user = store.get_user_by_email(req.email)
+    if not user or user["status"] != "active" or not verify_password(req.password, user["password_hash"]):
+        store.record_failed_auth(None, "invalid_user_credentials", getattr(request.state, "request_id", None))
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = generate_api_token("swgi_user")
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=settings.session_ttl_hours)
+    session = store.create_user_session(user["user_id"], token, expires_at)
+    if not session:
+        raise HTTPException(status_code=403, detail="User is not active")
+    auth = AuthContext(
+        role=user["role"],
+        token=token,
+        org_id=user.get("org_id"),
+        user_id=user["user_id"],
+        email=user["email"],
+    )
+    _audit(auth, action="login", resource_type="user", resource_id=user["user_id"], org_id=user.get("org_id"), request=request)
+    return LoginResponse(access_token=token, expires_at=session["expires_at"], user=UserResponse(**session["user"]))
+
+
+@app.get("/v1/auth/me", response_model=UserResponse)
+def me(auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
+    if auth.user_id:
+        session = store.resolve_user_session(auth.token)
+        if session:
+            return UserResponse(**session)
+    return _user_response_for_auth(auth)
+
+
+@app.post("/v1/auth/logout")
+def logout(auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
+    if auth.user_id:
+        store.revoke_user_session(auth.token)
+    return {"status": "signed_out"}
+
+
+@app.post("/v1/users", response_model=UserResponse)
+def create_user(req: UserCreateRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
+    require_role(auth, {"platform_admin"})
+    _validate_user_role_scope(req.role, req.org_id)
+    if req.org_id and not store.get_org(req.org_id):
+        raise HTTPException(status_code=404, detail="Org not found")
+    try:
+        user = store.create_user(
+            {
+                "user_id": str(uuid.uuid4()),
+                "email": req.email,
+                "display_name": req.display_name,
+                "password_hash": hash_password(req.password),
+                "role": req.role,
+                "org_id": req.org_id,
+                "status": req.status,
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="User could not be created") from exc
+    _audit(auth, action="create_user", resource_type="user", resource_id=user["user_id"], org_id=user.get("org_id"), request=request)
+    return UserResponse(**user)
+
+
+@app.get("/v1/users", response_model=list[UserResponse])
+def list_users(
+    org_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[UserResponse]:
+    require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
+    scoped_org_id = _org_filter_for(auth, org_id)
+    return [UserResponse(**user) for user in store.list_users(org_id=scoped_org_id, limit=limit, offset=offset)]
 
 
 @app.post("/v1/orgs", response_model=OrgResponse)

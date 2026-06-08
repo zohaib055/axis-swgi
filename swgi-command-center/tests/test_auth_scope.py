@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth import AuthContext, require_cluster_operator, require_org_access
-from app.security import constant_time_equal, generate_api_token, hash_token
+from app.security import constant_time_equal, generate_api_token, hash_password, hash_token, verify_password
 
 
 def test_api_token_hash_does_not_expose_plaintext() -> None:
@@ -14,6 +14,14 @@ def test_api_token_hash_does_not_expose_plaintext() -> None:
     assert token.startswith("swgi_test_")
     assert token not in digest
     assert constant_time_equal(digest, hash_token(token, "test-secret"))
+
+
+def test_password_hash_verification() -> None:
+    encoded = hash_password("correct horse battery staple")
+
+    assert "correct horse battery staple" not in encoded
+    assert verify_password("correct horse battery staple", encoded)
+    assert not verify_password("wrong password", encoded)
 
 
 def test_org_access_rejects_cross_org_user() -> None:

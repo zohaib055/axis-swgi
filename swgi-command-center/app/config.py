@@ -29,6 +29,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("RUN_DB_MIGRATIONS", "true").lower() == "true"
     )
     rate_limit_per_minute: int = Field(default_factory=lambda: int(os.getenv("RATE_LIMIT_PER_MINUTE", "120")))
+    session_ttl_hours: int = Field(default_factory=lambda: int(os.getenv("SESSION_TTL_HOURS", "8")))
     admin_api_token: str = Field(default_factory=lambda: os.getenv("ADMIN_API_TOKEN", ""))
     viewer_api_token: str = Field(default_factory=lambda: os.getenv("VIEWER_API_TOKEN", ""))
     api_key_hash_secret: str = Field(default_factory=lambda: os.getenv("API_KEY_HASH_SECRET", ""))

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Copy } from "lucide-react";
+import { RequirePermission, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings — SWGI" }] }),
@@ -13,6 +14,17 @@ export const Route = createFileRoute("/settings")({
 });
 
 function Settings() {
+  return (
+    <RequirePermission permission="settings:write">
+      <SettingsContent />
+    </RequirePermission>
+  );
+}
+
+function SettingsContent() {
+  const auth = useAuth();
+  const canWriteSettings = auth.can("settings:write");
+
   return (
     <>
       <PageHeader title="Settings" description="Control plane configuration · cryptographic identity · retention" />
@@ -32,16 +44,16 @@ function Settings() {
               <Field k="Algorithm" v="Ed25519" />
               <Field k="Rotated" v="2026-02-14" />
             </div>
-            <Button variant="outline" size="sm" className="mt-3">Rotate signing key</Button>
+            {canWriteSettings && <Button variant="outline" size="sm" className="mt-3">Rotate signing key</Button>}
           </div>
         </Card>
 
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">Data retention</h2>
           <div className="space-y-3 text-xs">
-            <div><Label className="text-xs">Receipts (metadata)</Label><Input className="h-8 text-xs" defaultValue="365 days" /></div>
-            <div><Label className="text-xs">Operator events</Label><Input className="h-8 text-xs" defaultValue="90 days" /></div>
-            <div><Label className="text-xs">Audit logs</Label><Input className="h-8 text-xs" defaultValue="2555 days (7y)" /></div>
+            <div><Label className="text-xs">Receipts (metadata)</Label><Input className="h-8 text-xs" defaultValue="365 days" disabled={!canWriteSettings} /></div>
+            <div><Label className="text-xs">Operator events</Label><Input className="h-8 text-xs" defaultValue="90 days" disabled={!canWriteSettings} /></div>
+            <div><Label className="text-xs">Audit logs</Label><Input className="h-8 text-xs" defaultValue="2555 days (7y)" disabled={!canWriteSettings} /></div>
             <p className="text-muted-foreground">Customer payload bytes are never persisted. Only signed metadata, hashes, and decisions are retained.</p>
           </div>
         </Card>
@@ -49,10 +61,10 @@ function Settings() {
         <Card className="p-4">
           <h2 className="mb-3 text-sm font-semibold">Rate limits</h2>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div><Label className="text-xs">Intent submissions / sec</Label><Input className="h-8 text-xs" defaultValue="500" /></div>
-            <div><Label className="text-xs">Operator polls / sec</Label><Input className="h-8 text-xs" defaultValue="2000" /></div>
-            <div><Label className="text-xs">Org admin requests / min</Label><Input className="h-8 text-xs" defaultValue="600" /></div>
-            <div><Label className="text-xs">Burst window</Label><Input className="h-8 text-xs" defaultValue="10s" /></div>
+            <div><Label className="text-xs">Intent submissions / sec</Label><Input className="h-8 text-xs" defaultValue="500" disabled={!canWriteSettings} /></div>
+            <div><Label className="text-xs">Operator polls / sec</Label><Input className="h-8 text-xs" defaultValue="2000" disabled={!canWriteSettings} /></div>
+            <div><Label className="text-xs">Org admin requests / min</Label><Input className="h-8 text-xs" defaultValue="600" disabled={!canWriteSettings} /></div>
+            <div><Label className="text-xs">Burst window</Label><Input className="h-8 text-xs" defaultValue="10s" disabled={!canWriteSettings} /></div>
           </div>
         </Card>
 

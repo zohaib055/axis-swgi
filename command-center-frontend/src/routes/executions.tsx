@@ -5,7 +5,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { executions, type ExecStatus } from "@/lib/mock-data";
+import type { ExecStatus } from "@/lib/command-center-api";
+import { useExecutions } from "@/lib/command-center-api";
 
 export const Route = createFileRoute("/executions")({
   head: () => ({ meta: [{ title: "Executions — SWGI" }] }),
@@ -20,7 +21,8 @@ function variantFor(s: ExecStatus) {
 
 function Executions() {
   const [tab, setTab] = useState<string>("all");
-  const [active, setActive] = useState<typeof executions[number] | null>(null);
+  const { data: executions } = useExecutions();
+  const [active, setActive] = useState<(typeof executions)[number] | null>(null);
   const filtered = executions.filter((e) => tab === "all" || e.status === tab);
 
   return (

@@ -4,7 +4,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { orgs, clusters, dashboardStats } from "@/lib/mock-data";
+import { useClusters, useOrganizations, useUsage } from "@/lib/command-center-api";
+import { RequirePermission } from "@/lib/auth";
 
 export const Route = createFileRoute("/usage")({
   head: () => ({ meta: [{ title: "Usage & Billing — SWGI" }] }),
@@ -12,7 +13,17 @@ export const Route = createFileRoute("/usage")({
 });
 
 function Usage() {
-  const s = dashboardStats;
+  return (
+    <RequirePermission permission="billing:read">
+      <UsageContent />
+    </RequirePermission>
+  );
+}
+
+function UsageContent() {
+  const { data: s } = useUsage();
+  const { data: orgs } = useOrganizations();
+  const { data: clusters } = useClusters();
   const usagePct = Math.round((s.monthlyUsage / s.planLimit) * 100);
 
   return (

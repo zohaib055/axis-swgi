@@ -140,6 +140,34 @@ class ApiKey(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    org_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.org_id"))
+    status: Mapped[str] = mapped_column(Text, default="active")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_login_at: Mapped[datetime | None]
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(Text, default="active")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    last_seen_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
+
+
 class Plan(Base):
     __tablename__ = "plans"
 

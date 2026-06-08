@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Input } from "@/components/ui/input";
-import { auditLogs } from "@/lib/mock-data";
+import { useAuditLogs } from "@/lib/command-center-api";
+import { RequirePermission } from "@/lib/auth";
 
 export const Route = createFileRoute("/audit-logs")({
   head: () => ({ meta: [{ title: "Audit Logs — SWGI" }] }),
@@ -11,6 +12,15 @@ export const Route = createFileRoute("/audit-logs")({
 });
 
 function AuditLogs() {
+  return (
+    <RequirePermission permission="audit:read">
+      <AuditLogsContent />
+    </RequirePermission>
+  );
+}
+
+function AuditLogsContent() {
+  const { data: auditLogs } = useAuditLogs();
   return (
     <>
       <PageHeader title="Audit Logs" description="Immutable, append-only timeline of every governed action" />

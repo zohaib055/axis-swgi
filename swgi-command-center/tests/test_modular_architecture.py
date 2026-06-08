@@ -9,7 +9,8 @@ from app.modules.executions.schemas import ExecutionStatusRequest
 from app.modules.operators.schemas import OperatorHeartbeatRequest
 from app.modules.orgs.schemas import OrgCreateRequest
 from app.modules.receipts.schemas import ExecutionIntentRequest
-from app.orm import ApiKey, Cluster, ExecutionRequest, Organization, TrustReceipt
+from app.modules.users.schemas import LoginRequest, UserCreateRequest
+from app.orm import ApiKey, Cluster, ExecutionRequest, Organization, TrustReceipt, User, UserSession
 
 
 def test_modules_own_public_schemas() -> None:
@@ -22,6 +23,8 @@ def test_modules_own_public_schemas() -> None:
     assert UsageResponse.__name__ == "UsageResponse"
     assert PlanResponse.__name__ == "PlanResponse"
     assert AuditLogResponse.__name__ == "AuditLogResponse"
+    assert LoginRequest.__name__ == "LoginRequest"
+    assert UserCreateRequest.__name__ == "UserCreateRequest"
 
 
 def test_orm_models_are_registered_with_sqlalchemy_base() -> None:
@@ -32,3 +35,5 @@ def test_orm_models_are_registered_with_sqlalchemy_base() -> None:
     assert ApiKey.__tablename__ in tables
     assert TrustReceipt.__tablename__ in tables
     assert ExecutionRequest.__tablename__ in tables
+    assert User.__tablename__ in tables
+    assert UserSession.__tablename__ in tables

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 from sqlalchemy import case, distinct, func, select
 
@@ -22,6 +23,8 @@ from .orm import (
     Policy,
     TrustReceipt,
     UsageMetering,
+    User,
+    UserSession,
 )
 from .security import hash_token
 
@@ -56,6 +59,17 @@ API_KEY_FIELDS = (
     "expires_at",
     "last_used_at",
     "revoked_at",
+)
+USER_FIELDS = (
+    "user_id",
+    "email",
+    "display_name",
+    "role",
+    "org_id",
+    "status",
+    "created_at",
+    "updated_at",
+    "last_login_at",
 )
 EXECUTION_FIELDS = (
     "execution_id",
@@ -106,6 +120,95 @@ class CommandCenterStore:
                 return None
             api_key.last_used_at = now
             return _as_dict(api_key, ("api_key_id", "org_id", "cluster_id", "key_name", "role"))
+
+    def resolve_user_session(self, token: str) -> dict[str, Any] | None:
+        token_hash = hash_token(token, settings.api_key_hash_secret)
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            row = session.execute(
+                select(UserSession, User)
+                .join(User, User.user_id == UserSession.user_id)
+                .where(
+                    UserSession.token_hash == token_hash,
+                    UserSession.status == "active",
+                    UserSession.revoked_at.is_(None),
+                    UserSession.expires_at > now,
+                    User.status == "active",
+                )
+            ).first()
+            if not row:
+                return None
+            user_session, user = row
+            user_session.last_seen_at = now
+            return {
+                **_as_dict(user, USER_FIELDS),
+                "session_id": user_session.session_id,
+                "expires_at": user_session.expires_at,
+            }
+
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        with session_scope(self.session_factory) as session:
+            user = session.scalars(select(User).where(User.email == email.strip().lower())).first()
+            if not user:
+                return None
+            data = _as_dict(user, USER_FIELDS)
+            data["password_hash"] = user.password_hash
+            return data
+
+    def create_user(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with session_scope(self.session_factory) as session:
+            user = User(**payload)
+            session.add(user)
+            session.flush()
+            return _as_dict(user, USER_FIELDS)
+
+    def list_users(self, org_id: str | None = None, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        stmt = select(User)
+        if org_id:
+            stmt = stmt.where(User.org_id == org_id)
+        stmt = stmt.order_by(User.created_at.desc()).limit(max(1, min(limit, 500))).offset(max(0, offset))
+        with session_scope(self.session_factory) as session:
+            return [_as_dict(row, USER_FIELDS) for row in session.scalars(stmt).all()]
+
+    def create_user_session(self, user_id: str, token: str, expires_at: datetime) -> dict[str, Any] | None:
+        token_hash = hash_token(token, settings.api_key_hash_secret)
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            user = session.get(User, user_id)
+            if not user or user.status != "active":
+                return None
+            row = UserSession(
+                session_id=str(uuid.uuid4()),
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+            user.last_login_at = now
+            user.updated_at = now
+            session.add(row)
+            session.flush()
+            return {
+                "session_id": row.session_id,
+                "expires_at": row.expires_at,
+                "user": _as_dict(user, USER_FIELDS),
+            }
+
+    def revoke_user_session(self, token: str) -> bool:
+        token_hash = hash_token(token, settings.api_key_hash_secret)
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            row = session.scalars(
+                select(UserSession).where(
+                    UserSession.token_hash == token_hash,
+                    UserSession.status == "active",
+                    UserSession.revoked_at.is_(None),
+                )
+            ).first()
+            if not row:
+                return False
+            row.status = "revoked"
+            row.revoked_at = now
+            return True
 
     def create_org(self, org: dict[str, Any]) -> dict[str, Any]:
         with session_scope(self.session_factory) as session:

@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Copy } from "lucide-react";
-import { apiKeys } from "@/lib/mock-data";
+import { useApiKeys } from "@/lib/command-center-api";
+import { RequirePermission, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/api-keys")({
   head: () => ({ meta: [{ title: "API Keys — SWGI" }] }),
@@ -16,7 +17,18 @@ export const Route = createFileRoute("/api-keys")({
 });
 
 function ApiKeys() {
+  return (
+    <RequirePermission permission="api_key:write">
+      <ApiKeysContent />
+    </RequirePermission>
+  );
+}
+
+function ApiKeysContent() {
   const [showGenerated, setShowGenerated] = useState(false);
+  const { data: apiKeys } = useApiKeys();
+  const auth = useAuth();
+  const canWriteKeys = auth.can("api_key:write");
   const generated = "swgi_live_47fa92c1b3e84d7ca9018f7d3e2c1b6a9c5d4e3f";
 
   return (
@@ -24,7 +36,7 @@ function ApiKeys() {
       <PageHeader
         title="API Keys"
         description="Org-scoped credentials for the control plane API and in-cluster Operators"
-        actions={
+        actions={canWriteKeys ? (
           <Dialog onOpenChange={(o) => !o && setShowGenerated(false)}>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="mr-1 h-4 w-4" />New API key</Button>
@@ -57,7 +69,7 @@ function ApiKeys() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        }
+        ) : undefined}
       />
       <div className="space-y-4 p-6">
         <Card className="p-0">
@@ -76,8 +88,14 @@ function ApiKeys() {
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">{k.expires}</td>
                   <td className="px-4 py-2"><StatusBadge dot variant={k.status === "active" ? "success" : "destructive"}>{k.status}</StatusBadge></td>
                   <td className="px-4 py-2 text-right">
-                    <Button size="sm" variant="ghost" className="h-7 text-xs">Rotate</Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive">Revoke</Button>
+                    {canWriteKeys ? (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs">Rotate</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive">Revoke</Button>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Read only</span>
+                    )}
                   </td>
                 </tr>
               ))}

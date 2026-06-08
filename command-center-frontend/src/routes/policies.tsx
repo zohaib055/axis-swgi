@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
-import { policies } from "@/lib/mock-data";
+import { usePolicies } from "@/lib/command-center-api";
 
 export const Route = createFileRoute("/policies")({
   head: () => ({ meta: [{ title: "Policies — SWGI" }] }),
@@ -10,6 +10,7 @@ export const Route = createFileRoute("/policies")({
 });
 
 function Policies() {
+  const { data: policies } = usePolicies();
   return (
     <>
       <PageHeader title="Policies" description="Governance rules evaluated before each Trust Receipt is issued" />
@@ -26,7 +27,7 @@ function Policies() {
                   <td className="px-4 py-2 text-muted-foreground">{p.scope}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{p.attached}</td>
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">v{p.version}</td>
-                  <td className="px-4 py-2"><StatusBadge dot variant="success">enforced</StatusBadge></td>
+                  <td className="px-4 py-2"><StatusBadge dot variant={p.active === false ? "muted" : "success"}>{p.active === false ? "inactive" : "enforced"}</StatusBadge></td>
                 </tr>
               ))}
             </tbody>

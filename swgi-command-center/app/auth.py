@@ -16,6 +16,8 @@ class AuthContext:
     token: str
     org_id: str | None = None
     cluster_id: str | None = None
+    user_id: str | None = None
+    email: str | None = None
 
 
 AccessRole = Literal["platform_admin", "platform_viewer", "org_admin", "org_viewer", "operator"]

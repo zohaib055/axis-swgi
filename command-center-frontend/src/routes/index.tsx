@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { dashboardStats, receipts, operatorEvents, clusters } from "@/lib/mock-data";
+import { useClusters, useOperatorEvents, useReceipts, useUsage } from "@/lib/command-center-api";
 import { Activity, Server, AlertTriangle, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -49,8 +49,11 @@ function Stat({
 }
 
 function Dashboard() {
-  const s = dashboardStats;
-  const usagePct = Math.round((s.monthlyUsage / s.planLimit) * 100);
+  const { data: s } = useUsage();
+  const { data: receipts } = useReceipts();
+  const { data: operatorEvents } = useOperatorEvents();
+  const { data: clusters } = useClusters();
+  const usagePct = s.planLimit > 0 ? Math.round((s.monthlyUsage / s.planLimit) * 100) : 0;
 
   return (
     <>
@@ -165,7 +168,7 @@ function Dashboard() {
 }
 
 function DecisionBar({ label, value, total, variant }: { label: string; value: number; total: number; variant: "allow" | "deny" | "modify" }) {
-  const pct = Math.round((value / total) * 100);
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   const colorVar = variant === "allow" ? "bg-success" : variant === "deny" ? "bg-destructive" : "bg-warning";
   return (
     <div>

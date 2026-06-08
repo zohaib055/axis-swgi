@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { receipts } from "@/lib/mock-data";
+import { useReceipts } from "@/lib/command-center-api";
 
 export const Route = createFileRoute("/receipts")({
   head: () => ({ meta: [{ title: "Receipts — SWGI" }] }),
@@ -15,7 +15,8 @@ export const Route = createFileRoute("/receipts")({
 
 function Receipts() {
   const [decision, setDecision] = useState("all");
-  const [active, setActive] = useState<typeof receipts[number] | null>(null);
+  const { data: receipts } = useReceipts();
+  const [active, setActive] = useState<(typeof receipts)[number] | null>(null);
   const filtered = useMemo(
     () => receipts.filter((r) => decision === "all" || r.decision === decision),
     [decision],

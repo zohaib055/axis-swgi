@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
-import { orgs } from "@/lib/mock-data";
+import { useOrganizations } from "@/lib/command-center-api";
+import { RequirePermission, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/organizations")({
   head: () => ({ meta: [{ title: "Organizations — SWGI" }] }),
@@ -16,14 +17,25 @@ export const Route = createFileRoute("/organizations")({
 });
 
 function Organizations() {
+  return (
+    <RequirePermission permission="org:read">
+      <OrganizationsContent />
+    </RequirePermission>
+  );
+}
+
+function OrganizationsContent() {
   const [q, setQ] = useState("");
+  const { data: orgs } = useOrganizations();
+  const auth = useAuth();
+  const canWrite = auth.can("org:write");
   const filtered = orgs.filter((o) => o.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <PageHeader
         title="Organizations"
         description="Tenant boundaries · isolated execution and metering"
-        actions={
+        actions={canWrite ? (
           <Dialog>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="mr-1 h-4 w-4" />New organization</Button>
@@ -38,7 +50,7 @@ function Organizations() {
               <DialogFooter><Button>Create</Button></DialogFooter>
             </DialogContent>
           </Dialog>
-        }
+        ) : undefined}
       />
       <div className="space-y-4 p-6">
         <div className="flex gap-2">

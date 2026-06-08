@@ -11,6 +11,8 @@ import {
 import appCss from "../styles.css?url";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthProvider, RequireAuth, roleLabel, useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 
 function NotFoundComponent() {
   return (
@@ -104,26 +106,45 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SidebarProvider>
-        <div className="flex min-h-screen w-full bg-background">
-          <AppSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex h-12 items-center gap-2 border-b border-border bg-background px-3">
-              <SidebarTrigger />
-              <span className="text-xs text-muted-foreground">
-                Metadata-only · Signed Trust Receipts · Tenant-isolated
-              </span>
-              <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="hidden sm:inline">env: prod-us</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+      <AuthProvider>
+        <RequireAuth>
+          <SidebarProvider>
+            <div className="flex min-h-screen w-full bg-background">
+              <AppSidebar />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <AppHeader />
+                <main className="min-w-0 flex-1">
+                  <Outlet />
+                </main>
               </div>
-            </header>
-            <main className="min-w-0 flex-1">
-              <Outlet />
-            </main>
-          </div>
-        </div>
-      </SidebarProvider>
+            </div>
+          </SidebarProvider>
+        </RequireAuth>
+      </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+function AppHeader() {
+  const auth = useAuth();
+  const role = auth.user ? roleLabel(auth.user.role) : "";
+
+  return (
+    <header className="flex h-12 items-center gap-2 border-b border-border bg-background px-3">
+      <SidebarTrigger />
+      <span className="text-xs text-muted-foreground">
+        Metadata-only · Signed Trust Receipts · Tenant-isolated
+      </span>
+      <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="hidden text-right sm:block">
+          <div className="font-medium text-foreground">{auth.user?.email}</div>
+          <div>{role}</div>
+        </div>
+        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={auth.logout}>
+          Sign out
+        </Button>
+      </div>
+    </header>
   );
 }

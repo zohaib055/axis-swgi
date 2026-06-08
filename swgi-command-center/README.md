@@ -32,12 +32,15 @@ timestamps, policy IDs, signatures, status, and usage counts.
 cd swgi-command-center
 poetry install
 cp .env.example .env
-poetry run uvicorn app.main:app --reload --port 8081
+poetry run uvicorn app.main:app --reload --port 8082
 ```
 
 `DATABASE_URL`, `ADMIN_API_TOKEN`, `VIEWER_API_TOKEN`, `API_KEY_HASH_SECRET`,
 and `SIGNING_KEY_PATH` are required. Postgres is the only supported Command
 Center metadata store.
+
+Human admin users and browser sessions are stored in Postgres. API keys remain
+separate and should be used for Operators and integrations.
 
 `DATABASE_URL` may use either `postgresql://`, `postgresql+psycopg://`, or
 `postgresql+psycopg2://`; Command Center normalizes these to the `psycopg` v3
@@ -60,16 +63,33 @@ startup.
 Platform admin creates an org:
 
 ```bash
-curl -X POST http://localhost:8081/v1/orgs \
+curl -X POST http://localhost:8082/v1/orgs \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" \
   -H "content-type: application/json" \
   -d '{"org_id":"axis","display_name":"Axis","plan_code":"business"}'
 ```
 
+Platform admin creates the first human admin user:
+
+```bash
+curl -X POST http://localhost:8082/v1/users \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"email":"admin@swgi.io","password":"replace-with-a-long-random-password","role":"platform_admin"}'
+```
+
+The Command Center frontend signs human users in through `/v1/auth/login`:
+
+```bash
+curl -X POST http://localhost:8082/v1/auth/login \
+  -H "content-type: application/json" \
+  -d '{"email":"admin@swgi.io","password":"replace-with-a-long-random-password"}'
+```
+
 Platform admin or org admin creates an org API key:
 
 ```bash
-curl -X POST http://localhost:8081/v1/orgs/axis/api-keys \
+curl -X POST http://localhost:8082/v1/orgs/axis/api-keys \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" \
   -H "content-type: application/json" \
   -d '{"key_name":"axis-admin","role":"org_admin"}'
@@ -78,7 +98,7 @@ curl -X POST http://localhost:8081/v1/orgs/axis/api-keys \
 Org admin registers a cluster:
 
 ```bash
-curl -X POST http://localhost:8081/v1/orgs/axis/clusters \
+curl -X POST http://localhost:8082/v1/orgs/axis/clusters \
   -H "Authorization: Bearer $ORG_ADMIN_TOKEN" \
   -H "content-type: application/json" \
   -d '{"cluster_id":"axis-prod-gke-001","display_name":"Axis GKE Prod","runtime":"gke"}'
@@ -99,7 +119,7 @@ The Operator uses its cluster-scoped token to send heartbeats and enforcement
 events:
 
 ```bash
-curl -X POST http://localhost:8081/v1/operator/heartbeat \
+curl -X POST http://localhost:8082/v1/operator/heartbeat \
   -H "Authorization: Bearer $OPERATOR_TOKEN" \
   -H "content-type: application/json" \
   -d '{
@@ -130,6 +150,11 @@ poetry run pytest
 
 - `GET /v1/health`
 - `GET /readyz`
+- `POST /v1/auth/login`
+- `GET /v1/auth/me`
+- `POST /v1/auth/logout`
+- `POST /v1/users`
+- `GET /v1/users`
 - `POST /v1/orgs`
 - `GET /v1/orgs`
 - `GET /v1/orgs/{org_id}`

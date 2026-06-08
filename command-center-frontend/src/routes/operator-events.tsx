@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Input } from "@/components/ui/input";
-import { operatorEvents } from "@/lib/mock-data";
+import { useOperatorEvents } from "@/lib/command-center-api";
+import { RequirePermission } from "@/lib/auth";
 
 export const Route = createFileRoute("/operator-events")({
   head: () => ({ meta: [{ title: "Operator Events — SWGI" }] }),
@@ -11,6 +12,15 @@ export const Route = createFileRoute("/operator-events")({
 });
 
 function OperatorEvents() {
+  return (
+    <RequirePermission permission="operator:read">
+      <OperatorEventsContent />
+    </RequirePermission>
+  );
+}
+
+function OperatorEventsContent() {
+  const { data: operatorEvents } = useOperatorEvents();
   return (
     <>
       <PageHeader title="Operator Events" description="In-cluster enforcement status reports" />

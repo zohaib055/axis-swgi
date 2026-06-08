@@ -8,7 +8,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, Copy } from "lucide-react";
-import { clusters, type Runtime } from "@/lib/mock-data";
+import type { Runtime } from "@/lib/command-center-api";
+import { useClusters } from "@/lib/command-center-api";
+import { RequirePermission, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/clusters")({
   head: () => ({ meta: [{ title: "Clusters — SWGI" }] }),
@@ -18,8 +20,19 @@ export const Route = createFileRoute("/clusters")({
 const RUNTIMES: (Runtime | "all")[] = ["all", "Kubernetes", "OpenShift", "GKE", "EKS", "AKS", "on-prem"];
 
 function Clusters() {
+  return (
+    <RequirePermission permission="cluster:read">
+      <ClustersContent />
+    </RequirePermission>
+  );
+}
+
+function ClustersContent() {
   const [runtime, setRuntime] = useState<string>("all");
-  const [active, setActive] = useState<typeof clusters[number] | null>(null);
+  const { data: clusters } = useClusters();
+  const auth = useAuth();
+  const canWriteCluster = auth.can("cluster:write");
+  const [active, setActive] = useState<(typeof clusters)[number] | null>(null);
   const [showToken, setShowToken] = useState(false);
 
   const filtered = useMemo(
@@ -108,10 +121,12 @@ function Clusters() {
                 Operator enforces signed Trust Receipts in-cluster. The control plane sees only metadata.
               </div>
 
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline">Rotate token</Button>
-                <Button size="sm" variant="ghost">Download manifest</Button>
-              </div>
+              {canWriteCluster && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline">Rotate token</Button>
+                  <Button size="sm" variant="ghost">Download manifest</Button>
+                </div>
+              )}
             </div>
           )}
         </SheetContent>
