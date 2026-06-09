@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from prometheus_client import Counter, Histogram, generate_latest
@@ -54,7 +54,10 @@ from .models import (
     PlanResponse,
     ReceiptListResponse,
     PasswordChangeRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     UsageResponse,
+    UserActionTokenResponse,
     UserCreateRequest,
     UserResponse,
     UserUpdateRequest,
@@ -113,6 +116,7 @@ node = SWGIEnforcementNode(
 )
 metrics = Metrics()
 rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+login_failures: dict[str, deque[float]] = defaultdict(deque)
 
 logger.info(
     "swgi_command_center.started mode=%s command_center_id=%s org_id=%s receipt_store=postgres",
@@ -150,14 +154,15 @@ def get_auth_context(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthContext:
-    if credentials is None:
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    if credentials is None and not cookie_token:
         store.record_failed_auth(None, "missing_authorization_header", getattr(request.state, "request_id", None))
         raise HTTPException(status_code=401, detail="Missing Authorization header")
-    if credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
+    if credentials is not None and (credentials.scheme.lower() != "bearer" or not credentials.credentials.strip()):
         store.record_failed_auth(None, "invalid_bearer_header", getattr(request.state, "request_id", None))
         raise HTTPException(status_code=401, detail="Invalid bearer token")
 
-    token = credentials.credentials.strip()
+    token = credentials.credentials.strip() if credentials is not None else (cookie_token or "").strip()
     if constant_time_equal(token, settings.admin_api_token):
         return AuthContext(role="platform_admin", token=token)
     if constant_time_equal(token, settings.viewer_api_token):
@@ -221,6 +226,46 @@ def _user_response_for_auth(auth: AuthContext) -> UserResponse:
         updated_at=None,
         last_login_at=None,
     )
+
+
+def _login_key(req: LoginRequest, request: Request) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{req.email}:{host}"
+
+
+def _check_login_lockout(req: LoginRequest, request: Request) -> None:
+    key = _login_key(req, request)
+    now = time.time()
+    failures = login_failures[key]
+    window_seconds = settings.login_lockout_minutes * 60
+    while failures and now - failures[0] > window_seconds:
+        failures.popleft()
+    if len(failures) >= settings.login_failure_limit:
+        raise HTTPException(status_code=429, detail="Too many failed login attempts")
+
+
+def _record_login_failure(req: LoginRequest, request: Request) -> None:
+    login_failures[_login_key(req, request)].append(time.time())
+
+
+def _clear_login_failures(req: LoginRequest, request: Request) -> None:
+    login_failures.pop(_login_key(req, request), None)
+
+
+def _set_auth_cookie(response: Response, token: str, expires_at: datetime) -> None:
+    response.set_cookie(
+        settings.auth_cookie_name,
+        token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        expires=expires_at,
+        path="/",
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(settings.auth_cookie_name, path="/")
 
 
 def _org_filter_for(auth: AuthContext, requested_org_id: str | None) -> str | None:
@@ -300,9 +345,11 @@ def prometheus_metrics() -> PlainTextResponse:
 
 
 @app.post("/v1/auth/login", response_model=LoginResponse)
-def login(req: LoginRequest, request: Request) -> LoginResponse:
+def login(req: LoginRequest, request: Request, response: Response) -> LoginResponse:
+    _check_login_lockout(req, request)
     user = store.get_user_by_email(req.email)
     if not user or user["status"] != "active" or not verify_password(req.password, user["password_hash"]):
+        _record_login_failure(req, request)
         store.record_failed_auth(None, "invalid_user_credentials", getattr(request.state, "request_id", None))
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -319,6 +366,8 @@ def login(req: LoginRequest, request: Request) -> LoginResponse:
         email=user["email"],
     )
     _audit(auth, action="login", resource_type="user", resource_id=user["user_id"], org_id=user.get("org_id"), request=request)
+    _clear_login_failures(req, request)
+    _set_auth_cookie(response, token, session["expires_at"])
     return LoginResponse(access_token=token, expires_at=session["expires_at"], user=UserResponse(**session["user"]))
 
 
@@ -332,10 +381,41 @@ def me(auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
 
 
 @app.post("/v1/auth/logout")
-def logout(auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
+def logout(response: Response, auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
     if auth.user_id:
         store.revoke_user_session(auth.token)
+    _clear_auth_cookie(response)
     return {"status": "signed_out"}
+
+
+@app.post("/v1/auth/password-reset", response_model=UserActionTokenResponse)
+def request_password_reset(req: PasswordResetRequest, request: Request) -> UserActionTokenResponse:
+    user = store.get_user_by_email(req.email)
+    if not user:
+        return UserActionTokenResponse(token="", expires_at=datetime.now(tz=timezone.utc), delivery="email_if_found")
+    token = generate_api_token("swgi_reset")
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=2)
+    store.create_user_action_token(user["user_id"], token, "password_reset", expires_at)
+    _audit(
+        AuthContext(role=user["role"], token="", org_id=user.get("org_id"), user_id=user["user_id"], email=user["email"]),
+        action="request_password_reset",
+        resource_type="user",
+        resource_id=user["user_id"],
+        org_id=user.get("org_id"),
+        request=request,
+    )
+    return UserActionTokenResponse(token=token, expires_at=expires_at, delivery="copy")
+
+
+@app.post("/v1/auth/password-reset/confirm")
+def confirm_password_reset(req: PasswordResetConfirmRequest) -> dict[str, str]:
+    payload = store.consume_user_action_token(req.token, "password_reset")
+    if not payload:
+        payload = store.consume_user_action_token(req.token, "invite")
+    if not payload:
+        raise HTTPException(status_code=400, detail="Reset token is invalid or expired")
+    store.update_user_password(payload["user"]["user_id"], hash_password(req.new_password))
+    return {"status": "password_updated"}
 
 
 @app.post("/v1/users", response_model=UserResponse)
@@ -364,6 +444,30 @@ def create_user(req: UserCreateRequest, request: Request, auth: AuthContext = De
     return UserResponse(**user)
 
 
+@app.post("/v1/users/{user_id}/invite", response_model=UserActionTokenResponse)
+def create_user_invite(user_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)) -> UserActionTokenResponse:
+    existing = store.get_user(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    _require_user_management_scope(auth, target_role=existing["role"], target_org_id=existing["org_id"])
+    token = generate_api_token("swgi_invite")
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(days=7)
+    stored = store.create_user_action_token(user_id, token, "invite", expires_at)
+    if not stored:
+        raise HTTPException(status_code=404, detail="User not found")
+    _audit(auth, action="create_user_invite", resource_type="user", resource_id=user_id, org_id=existing.get("org_id"), request=request)
+    return UserActionTokenResponse(token=token, expires_at=expires_at, delivery="copy")
+
+
+@app.post("/v1/auth/invite/accept")
+def accept_invite(req: PasswordResetConfirmRequest) -> dict[str, str]:
+    payload = store.consume_user_action_token(req.token, "invite")
+    if not payload:
+        raise HTTPException(status_code=400, detail="Invite token is invalid or expired")
+    store.update_user_password(payload["user"]["user_id"], hash_password(req.new_password), revoke_existing_sessions=True)
+    return {"status": "invite_accepted"}
+
+
 @app.get("/v1/users", response_model=list[UserResponse])
 def list_users(
     org_id: str | None = None,
@@ -374,6 +478,27 @@ def list_users(
     require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
     scoped_org_id = _org_filter_for(auth, org_id)
     return [UserResponse(**user) for user in store.list_users(org_id=scoped_org_id, limit=limit, offset=offset)]
+
+
+@app.get("/v1/settings")
+def get_settings(auth: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_role(auth, {"platform_admin", "platform_viewer"})
+    return store.get_settings()
+
+
+@app.patch("/v1/settings/{setting_key}")
+def update_setting(
+    setting_key: str,
+    payload: dict[str, Any],
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_role(auth, {"platform_admin"})
+    if setting_key not in {"security", "onboarding"}:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    updated = store.update_setting(setting_key, payload)
+    _audit(auth, action="update_setting", resource_type="setting", resource_id=setting_key, request=request)
+    return updated
 
 
 @app.patch("/v1/users/{user_id}", response_model=UserResponse)

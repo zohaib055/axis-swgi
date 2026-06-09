@@ -46,6 +46,26 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(..., min_length=12, max_length=256)
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(..., min_length=16)
+    new_password: str = Field(..., min_length=12, max_length=256)
+
+
+class UserActionTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    delivery: str = "copy"
+
+
 class UserResponse(BaseModel):
     user_id: str
     email: str

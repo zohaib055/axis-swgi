@@ -58,7 +58,6 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 type StoredSession = {
-  accessToken: string;
   expiresAt: string;
   user: User;
 };
@@ -74,6 +73,33 @@ type LoginResponse = {
     org_id?: string | null;
   };
 };
+
+type ActionTokenResponse = {
+  token: string;
+  expires_at: string;
+  delivery: string;
+};
+
+async function requestPasswordResetToken(email: string): Promise<ActionTokenResponse> {
+  const response = await fetch(`${API_BASE}/v1/auth/password-reset`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) throw new Error("Password reset failed");
+  return response.json() as Promise<ActionTokenResponse>;
+}
+
+async function confirmPasswordResetToken(token: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/v1/auth/password-reset/confirm`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (!response.ok) throw new Error("Password reset failed");
+}
 
 function mapUser(user: LoginResponse["user"]): User {
   return {
@@ -97,21 +123,58 @@ export function getStoredAuthSession(): StoredSession | null {
   }
 }
 
+async function fetchMe(): Promise<User | null> {
+  const response = await fetch(`${API_BASE}/v1/auth/me`, {
+    headers: { accept: "application/json" },
+    credentials: "same-origin",
+  });
+  if (!response.ok) return null;
+  const user = (await response.json()) as LoginResponse["user"];
+  return mapUser(user);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
   const [user, setUser] = React.useState<User | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     const session = getStoredAuthSession();
-    if (session) {
+    if (session && new Date(session.expiresAt).getTime() > Date.now()) {
+      setUser(session.user);
+    }
+    void fetchMe().then((me) => {
+      if (cancelled) return;
+      if (me) {
+        setUser(me);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+          user: me,
+        }));
+      } else {
+        window.localStorage.removeItem(STORAGE_KEY);
+        setUser(null);
+      }
+      setReady(true);
+    });
+    if (session && new Date(session.expiresAt).getTime() <= Date.now()) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const session = getStoredAuthSession();
+    if (session && user) {
       if (new Date(session.expiresAt).getTime() > Date.now()) {
-        setUser(session.user);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...session, user }));
       } else {
         window.localStorage.removeItem(STORAGE_KEY);
       }
     }
-    setReady(true);
-  }, []);
+  }, [user]);
 
   const login = React.useCallback(async (email: string, password: string) => {
     const response = await fetch(`${API_BASE}/v1/auth/login`, {
@@ -120,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accept: "application/json",
         "content-type": "application/json",
       },
+      credentials: "same-origin",
       body: JSON.stringify({ email, password }),
     });
     if (!response.ok) {
@@ -127,7 +191,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const data = (await response.json()) as LoginResponse;
     const nextSession: StoredSession = {
-      accessToken: data.access_token,
       expiresAt: data.expires_at,
       user: mapUser(data.user),
     };
@@ -142,8 +205,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: "POST",
         headers: {
           accept: "application/json",
-          authorization: `Bearer ${session.accessToken}`,
         },
+        credentials: "same-origin",
       });
     }
     window.localStorage.removeItem(STORAGE_KEY);
@@ -218,6 +281,11 @@ function LoginScreen() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [resetMode, setResetMode] = React.useState(false);
+  const [resetToken, setResetToken] = React.useState("");
+  const [resetPassword, setResetPassword] = React.useState("");
+  const [resetMessage, setResetMessage] = React.useState("");
+  const [resetSubmitting, setResetSubmitting] = React.useState(false);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -231,6 +299,59 @@ function LoginScreen() {
             <p className="text-xs text-muted-foreground">Secure admin access</p>
           </div>
         </div>
+        {resetMode ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setResetMessage("");
+              setError("");
+              setResetSubmitting(true);
+              try {
+                if (!resetToken) {
+                  const result = await requestPasswordResetToken(email);
+                  setResetToken(result.token);
+                  setResetMessage(result.token ? "Reset token generated. Paste a new password below." : "If the account exists, reset instructions are available.");
+                } else {
+                  await confirmPasswordResetToken(resetToken, resetPassword);
+                  setResetMessage("Password updated. Sign in with the new password.");
+                  setResetToken("");
+                  setResetPassword("");
+                  setResetMode(false);
+                }
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Password reset failed");
+              } finally {
+                setResetSubmitting(false);
+              }
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label className="text-xs">Email</Label>
+              <Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="h-9 text-sm" />
+            </div>
+            {resetToken && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Reset token</Label>
+                  <Input value={resetToken} onChange={(event) => setResetToken(event.target.value)} className="h-9 font-mono text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">New password</Label>
+                  <Input value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} type="password" className="h-9 text-sm" />
+                </div>
+              </>
+            )}
+            {resetMessage && <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{resetMessage}</div>}
+            {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+            <Button type="submit" className="w-full" disabled={resetSubmitting || !email || (Boolean(resetToken) && resetPassword.length < 12)}>
+              {resetSubmitting ? "Working..." : resetToken ? "Update password" : "Generate reset token"}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => { setResetMode(false); setError(""); }}>
+              Back to sign in
+            </Button>
+          </form>
+        ) : (
         <form
           className="space-y-3"
           onSubmit={async (event) => {
@@ -258,7 +379,11 @@ function LoginScreen() {
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting ? "Signing in..." : "Sign in"}
           </Button>
+          <Button type="button" variant="ghost" className="w-full" onClick={() => { setResetMode(true); setError(""); }}>
+            Forgot password
+          </Button>
         </form>
+        )}
       </Card>
     </div>
   );

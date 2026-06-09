@@ -168,6 +168,27 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None]
 
 
+class UserActionToken(Base):
+    __tablename__ = "user_action_tokens"
+
+    token_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, default="active")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None]
+
+
+class ControlPlaneSetting(Base):
+    __tablename__ = "control_plane_settings"
+
+    setting_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    setting_value: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class Plan(Base):
     __tablename__ = "plans"
 

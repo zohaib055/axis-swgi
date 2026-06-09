@@ -74,15 +74,15 @@ async function proxyCommandCenter(request: Request, env: unknown): Promise<Respo
   const upstream = new URL(`${commandCenterUrl}${upstreamPath}${incoming.search}`);
   const headers = new Headers(request.headers);
   const browserAuth = request.headers.get("authorization");
+  const browserCookie = request.headers.get("cookie");
   if (browserAuth) {
     headers.set("authorization", browserAuth);
-  } else if (apiToken && upstreamPath !== "/v1/auth/login") {
+  } else if (apiToken && !browserCookie && upstreamPath !== "/v1/auth/login") {
     headers.set("authorization", `Bearer ${apiToken}`);
   } else {
     headers.delete("authorization");
   }
   headers.set("accept", "application/json");
-  headers.delete("cookie");
   headers.delete("host");
 
   const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer();

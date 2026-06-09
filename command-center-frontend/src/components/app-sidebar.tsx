@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Building2,
+  Rocket,
   Server,
   ScrollText,
   Activity,
@@ -38,6 +39,7 @@ type NavItem = {
 
 const operations: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Onboarding", url: "/onboarding", icon: Rocket, permission: "org:write" },
   { title: "Organizations", url: "/organizations", icon: Building2, permission: "org:read" },
   { title: "Clusters", url: "/clusters", icon: Server, permission: "cluster:read" },
   { title: "Receipts", url: "/receipts", icon: ScrollText },

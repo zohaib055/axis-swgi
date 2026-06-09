@@ -42,6 +42,9 @@ Center metadata store.
 Human admin users and browser sessions are stored in Postgres. API keys remain
 separate and should be used for Operators and integrations.
 
+For local HTTP development, keep `AUTH_COOKIE_SECURE=false`. In production
+behind HTTPS, set `AUTH_COOKIE_SECURE=true`.
+
 `DATABASE_URL` may use either `postgresql://`, `postgresql+psycopg://`, or
 `postgresql+psycopg2://`; Command Center normalizes these to the `psycopg` v3
 driver used by the app and Alembic.
@@ -84,6 +87,17 @@ The Command Center frontend signs human users in through `/v1/auth/login`:
 curl -X POST http://localhost:8082/v1/auth/login \
   -H "content-type: application/json" \
   -d '{"email":"admin@swgi.io","password":"replace-with-a-long-random-password"}'
+```
+
+Admins can generate copyable invite/reset tokens until SMTP is configured:
+
+```bash
+curl -X POST http://localhost:8082/v1/users/$USER_ID/invite \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN"
+
+curl -X POST http://localhost:8082/v1/auth/password-reset \
+  -H "content-type: application/json" \
+  -d '{"email":"admin@swgi.io"}'
 ```
 
 Platform admin or org admin creates an org API key:
@@ -139,6 +153,10 @@ Tenancy rules:
 - `org_viewer` can read one org.
 - `operator` can report and read only its registered cluster.
 
+The frontend Onboarding page wraps the production onboarding sequence: create
+org, create first customer admin, register the first cluster, then display the
+Operator install configuration.
+
 ## Tests
 
 ```bash
@@ -153,8 +171,16 @@ poetry run pytest
 - `POST /v1/auth/login`
 - `GET /v1/auth/me`
 - `POST /v1/auth/logout`
+- `POST /v1/auth/password-reset`
+- `POST /v1/auth/password-reset/confirm`
+- `POST /v1/auth/invite/accept`
 - `POST /v1/users`
 - `GET /v1/users`
+- `PATCH /v1/users/{user_id}`
+- `POST /v1/users/{user_id}/password`
+- `POST /v1/users/{user_id}/invite`
+- `GET /v1/settings`
+- `PATCH /v1/settings/{setting_key}`
 - `POST /v1/orgs`
 - `GET /v1/orgs`
 - `GET /v1/orgs/{org_id}`

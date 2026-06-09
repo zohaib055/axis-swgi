@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, UserPlus } from "lucide-react";
 import { RequirePermission, useAuth } from "@/lib/auth";
-import { changeUserPassword, createUser, updateUserStatus, useOrganizations, useUsers, type UserRole } from "@/lib/command-center-api";
+import { changeUserPassword, createInvite, createUser, updateUserStatus, useOrganizations, useUsers, type UserRole } from "@/lib/command-center-api";
 
 export const Route = createFileRoute("/users")({
   head: () => ({ meta: [{ title: "Users — SWGI" }] }),
@@ -39,6 +39,7 @@ function UsersContent() {
   const [orgId, setOrgId] = useState("");
   const [resetUser, setResetUser] = useState<{ id: string; email: string } | null>(null);
   const [resetPassword, setResetPassword] = useState("");
+  const [inviteToken, setInviteToken] = useState<{ email: string; token: string } | null>(null);
   const visibleOrgs = auth.user?.orgId ? orgs.filter((org) => org.id === auth.user?.orgId) : orgs;
   const selectedOrg = orgId || visibleOrgs[0]?.id || auth.user?.orgId || "";
   const roleOptions: { value: UserRole; label: string }[] = auth.user?.role === "platform_admin"
@@ -78,6 +79,10 @@ function UsersContent() {
       setResetPassword("");
       void queryClient.invalidateQueries({ queryKey: ["command-center", "users"] });
     },
+  });
+  const inviteMutation = useMutation({
+    mutationFn: (user: { id: string; email: string }) => createInvite(user.id).then((result) => ({ email: user.email, token: result.token })),
+    onSuccess: setInviteToken,
   });
 
   function resetCreateForm() {
@@ -153,6 +158,7 @@ function UsersContent() {
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">{user.lastLogin}</td>
                   <td className="px-4 py-2"><StatusBadge dot variant={user.status === "active" ? "success" : "destructive"}>{user.status}</StatusBadge></td>
                   <td className="px-4 py-2 text-right">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={inviteMutation.isPending} onClick={() => inviteMutation.mutate({ id: user.id, email: user.email })}>Invite</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setResetUser({ id: user.id, email: user.email })}>Password</Button>
                     <Button
                       size="sm"
@@ -188,6 +194,18 @@ function UsersContent() {
             {passwordMutation.isError && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">Password could not be updated.</div>}
             <DialogFooter><Button type="submit" disabled={passwordMutation.isPending || resetPassword.length < 12}>{passwordMutation.isPending ? "Updating..." : "Update password"}</Button></DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(inviteToken)} onOpenChange={(nextOpen) => { if (!nextOpen) setInviteToken(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Invite token</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              Send this token to {inviteToken?.email}. They can use it from the password reset screen to set their password.
+            </div>
+            <div className="break-all rounded-md border border-border bg-muted/40 p-2 font-mono text-xs">{inviteToken?.token}</div>
+            <DialogFooter><Button variant="outline" onClick={() => setInviteToken(null)}>Done</Button></DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>

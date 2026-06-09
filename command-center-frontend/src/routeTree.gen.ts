@@ -16,6 +16,7 @@ import { Route as ReceiptsRouteImport } from './routes/receipts'
 import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as OrganizationsRouteImport } from './routes/organizations'
 import { Route as OperatorEventsRouteImport } from './routes/operator-events'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ExecutionsRouteImport } from './routes/executions'
 import { Route as ClustersRouteImport } from './routes/clusters'
 import { Route as AuditLogsRouteImport } from './routes/audit-logs'
@@ -57,6 +58,11 @@ const OperatorEventsRoute = OperatorEventsRouteImport.update({
   path: '/operator-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExecutionsRoute = ExecutionsRouteImport.update({
   id: '/executions',
   path: '/executions',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/audit-logs': typeof AuditLogsRoute
   '/clusters': typeof ClustersRoute
   '/executions': typeof ExecutionsRoute
+  '/onboarding': typeof OnboardingRoute
   '/operator-events': typeof OperatorEventsRoute
   '/organizations': typeof OrganizationsRoute
   '/policies': typeof PoliciesRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/audit-logs': typeof AuditLogsRoute
   '/clusters': typeof ClustersRoute
   '/executions': typeof ExecutionsRoute
+  '/onboarding': typeof OnboardingRoute
   '/operator-events': typeof OperatorEventsRoute
   '/organizations': typeof OrganizationsRoute
   '/policies': typeof PoliciesRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/audit-logs': typeof AuditLogsRoute
   '/clusters': typeof ClustersRoute
   '/executions': typeof ExecutionsRoute
+  '/onboarding': typeof OnboardingRoute
   '/operator-events': typeof OperatorEventsRoute
   '/organizations': typeof OrganizationsRoute
   '/policies': typeof PoliciesRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/audit-logs'
     | '/clusters'
     | '/executions'
+    | '/onboarding'
     | '/operator-events'
     | '/organizations'
     | '/policies'
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/audit-logs'
     | '/clusters'
     | '/executions'
+    | '/onboarding'
     | '/operator-events'
     | '/organizations'
     | '/policies'
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/audit-logs'
     | '/clusters'
     | '/executions'
+    | '/onboarding'
     | '/operator-events'
     | '/organizations'
     | '/policies'
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   AuditLogsRoute: typeof AuditLogsRoute
   ClustersRoute: typeof ClustersRoute
   ExecutionsRoute: typeof ExecutionsRoute
+  OnboardingRoute: typeof OnboardingRoute
   OperatorEventsRoute: typeof OperatorEventsRoute
   OrganizationsRoute: typeof OrganizationsRoute
   PoliciesRoute: typeof PoliciesRoute
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OperatorEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/executions': {
       id: '/executions'
       path: '/executions'
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditLogsRoute: AuditLogsRoute,
   ClustersRoute: ClustersRoute,
   ExecutionsRoute: ExecutionsRoute,
+  OnboardingRoute: OnboardingRoute,
   OperatorEventsRoute: OperatorEventsRoute,
   OrganizationsRoute: OrganizationsRoute,
   PoliciesRoute: PoliciesRoute,

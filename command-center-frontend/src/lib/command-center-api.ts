@@ -135,6 +135,29 @@ export type CreateUserInput = {
   orgId?: string | null;
 };
 
+export type SecuritySettings = {
+  receipt_retention_days: number;
+  operator_event_retention_days: number;
+  audit_log_retention_days: number;
+  intent_rate_limit_per_second: number;
+  operator_poll_limit_per_second: number;
+  org_admin_requests_per_minute: number;
+  burst_window_seconds: number;
+};
+
+type SettingsResponse = {
+  security?: SecuritySettings;
+  onboarding?: {
+    support_email?: string;
+    docs_url?: string;
+  };
+};
+
+type ClusterRegistrationResponse = {
+  cluster: ClusterResponse;
+  install: Record<string, string>;
+};
+
 const EMPTY_USAGE = {
   totalExecutions: 0,
   allow: 0,
@@ -157,13 +180,11 @@ async function commandCenterFetch<T>(
   if (init.json !== undefined) {
     headers.set("content-type", "application/json");
   }
-  if (session?.accessToken) {
-    headers.set("authorization", `Bearer ${session.accessToken}`);
-  }
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
+    credentials: "same-origin",
     body: init.json === undefined ? init.body : JSON.stringify(init.json),
   });
   if (!response.ok) {
@@ -432,6 +453,71 @@ export async function changeUserPassword(userId: string, newPassword: string) {
   return commandCenterFetch<{ status: string }>(`/v1/users/${userId}/password`, {
     method: "POST",
     json: { new_password: newPassword },
+  });
+}
+
+export async function createInvite(userId: string) {
+  return commandCenterFetch<{ token: string; expires_at: string; delivery: string }>(`/v1/users/${userId}/invite`, {
+    method: "POST",
+  });
+}
+
+export async function requestPasswordReset(email: string) {
+  return commandCenterFetch<{ token: string; expires_at: string; delivery: string }>("/v1/auth/password-reset", {
+    method: "POST",
+    json: { email },
+  });
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string) {
+  return commandCenterFetch<{ status: string }>("/v1/auth/password-reset/confirm", {
+    method: "POST",
+    json: { token, new_password: newPassword },
+  });
+}
+
+export function useControlPlaneSettings() {
+  const empty: SettingsResponse = {
+    security: {
+      receipt_retention_days: 365,
+      operator_event_retention_days: 90,
+      audit_log_retention_days: 2555,
+      intent_rate_limit_per_second: 500,
+      operator_poll_limit_per_second: 2000,
+      org_admin_requests_per_minute: 600,
+      burst_window_seconds: 10,
+    },
+  };
+  return useCommandCenterQuery(["settings"], () => commandCenterFetch<SettingsResponse>("/v1/settings"), empty);
+}
+
+export async function updateSecuritySettings(input: SecuritySettings) {
+  return commandCenterFetch<{ security: SecuritySettings }>("/v1/settings/security", {
+    method: "PATCH",
+    json: input,
+  });
+}
+
+export async function createOrganization(input: { orgId: string; displayName: string; planCode?: string }) {
+  return commandCenterFetch<OrgResponse>("/v1/orgs", {
+    method: "POST",
+    json: {
+      org_id: input.orgId,
+      display_name: input.displayName,
+      plan_code: input.planCode || "starter",
+      status: "active",
+    },
+  });
+}
+
+export async function registerCluster(input: { orgId: string; clusterId: string; displayName: string; runtime: string }) {
+  return commandCenterFetch<ClusterRegistrationResponse>(`/v1/orgs/${input.orgId}/clusters`, {
+    method: "POST",
+    json: {
+      cluster_id: input.clusterId,
+      display_name: input.displayName,
+      runtime: input.runtime,
+    },
   });
 }
 

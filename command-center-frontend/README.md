@@ -14,8 +14,8 @@ SWGI_API_TOKEN=<optional_bootstrap_or_service_token>
 
 The UI is live-only and does not fall back to mock data. `SWGI_API_TOKEN` is
 server-side only and optional for service-mode proxy calls. Human users sign in
-through `/v1/auth/login`; the browser forwards the returned user session token
-to the backend.
+through `/v1/auth/login`; browser sessions use an httpOnly Command Center
+cookie forwarded through the same-origin `/api/command-center` proxy.
 
 ## Admin Access
 
@@ -30,6 +30,10 @@ role-based permissions:
 
 Users and sessions are stored in Command Center Postgres. Operator and API
 tokens stay separate from human user sessions.
+
+The app includes operational screens for onboarding customers, managing users,
+generating invite/reset tokens, managing API keys, and updating security
+settings. Billing/plan enforcement is intentionally outside this frontend pass.
 
 ## Local Development
 

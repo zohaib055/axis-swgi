@@ -14,6 +14,7 @@ from .orm import (
     ApiKey,
     AuditLog,
     Cluster,
+    ControlPlaneSetting,
     ExecutionRequest,
     FailedAuthEvent,
     Namespace,
@@ -24,6 +25,7 @@ from .orm import (
     TrustReceipt,
     UsageMetering,
     User,
+    UserActionToken,
     UserSession,
 )
 from .security import hash_token
@@ -251,6 +253,65 @@ class CommandCenterStore:
             row.status = "revoked"
             row.revoked_at = now
             return True
+
+    def create_user_action_token(self, user_id: str, token: str, purpose: str, expires_at: datetime) -> dict[str, Any] | None:
+        token_hash = hash_token(token, settings.api_key_hash_secret)
+        with session_scope(self.session_factory) as session:
+            if not session.get(User, user_id):
+                return None
+            row = UserActionToken(
+                token_id=str(uuid.uuid4()),
+                user_id=user_id,
+                token_hash=token_hash,
+                purpose=purpose,
+                expires_at=expires_at,
+            )
+            session.add(row)
+            session.flush()
+            return {
+                "token_id": row.token_id,
+                "user_id": row.user_id,
+                "purpose": row.purpose,
+                "expires_at": row.expires_at,
+            }
+
+    def consume_user_action_token(self, token: str, purpose: str) -> dict[str, Any] | None:
+        token_hash = hash_token(token, settings.api_key_hash_secret)
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            row = session.scalars(
+                select(UserActionToken).where(
+                    UserActionToken.token_hash == token_hash,
+                    UserActionToken.purpose == purpose,
+                    UserActionToken.status == "active",
+                    UserActionToken.expires_at > now,
+                )
+            ).first()
+            if not row:
+                return None
+            user = session.get(User, row.user_id)
+            if not user or user.status != "active":
+                return None
+            row.status = "used"
+            row.used_at = now
+            return {"user": _as_dict(user, USER_FIELDS), "token_id": row.token_id}
+
+    def get_settings(self) -> dict[str, Any]:
+        with session_scope(self.session_factory) as session:
+            rows = session.scalars(select(ControlPlaneSetting)).all()
+            return {row.setting_key: row.setting_value for row in rows}
+
+    def update_setting(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
+        with session_scope(self.session_factory) as session:
+            row = session.get(ControlPlaneSetting, key)
+            if not row:
+                row = ControlPlaneSetting(setting_key=key, setting_value=value)
+                session.add(row)
+            else:
+                row.setting_value = value
+                row.updated_at = datetime.now(tz=timezone.utc)
+            session.flush()
+            return {row.setting_key: row.setting_value}
 
     def create_org(self, org: dict[str, Any]) -> dict[str, Any]:
         with session_scope(self.session_factory) as session:
