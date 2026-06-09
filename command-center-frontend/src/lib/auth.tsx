@@ -32,6 +32,7 @@ type AuthContextValue = {
   user: User | null;
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (input: SignupInput) => Promise<void>;
   logout: () => void;
   can: (permission: Permission) => boolean;
 };
@@ -78,6 +79,14 @@ type ActionTokenResponse = {
   token: string;
   expires_at: string;
   delivery: string;
+};
+
+type SignupInput = {
+  orgId: string;
+  orgName: string;
+  email: string;
+  password: string;
+  displayName?: string;
 };
 
 async function requestPasswordResetToken(email: string): Promise<ActionTokenResponse> {
@@ -198,6 +207,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(nextSession.user);
   }, []);
 
+  const signup = React.useCallback(async (input: SignupInput) => {
+    const response = await fetch(`${API_BASE}/v1/auth/signup`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        org_id: input.orgId,
+        org_name: input.orgName,
+        email: input.email,
+        password: input.password,
+        display_name: input.displayName || input.email,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(response.status === 409 ? "Org or account already exists" : "Signup failed");
+    }
+    const data = (await response.json()) as LoginResponse;
+    const nextSession: StoredSession = {
+      expiresAt: data.expires_at,
+      user: mapUser(data.user),
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+    setUser(nextSession.user);
+  }, []);
+
   const logout = React.useCallback(() => {
     const session = getStoredAuthSession();
     if (session) {
@@ -219,7 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, logout, can }}>
+    <AuthContext.Provider value={{ user, ready, login, signup, logout, can }}>
       {children}
     </AuthContext.Provider>
   );
@@ -280,6 +317,10 @@ function LoginScreen() {
   const [email, setEmail] = React.useState("admin@swgi.io");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
+  const [signupMode, setSignupMode] = React.useState(false);
+  const [orgId, setOrgId] = React.useState("");
+  const [orgName, setOrgName] = React.useState("");
+  const [displayName, setDisplayName] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [resetMode, setResetMode] = React.useState(false);
   const [resetToken, setResetToken] = React.useState("");
@@ -299,7 +340,51 @@ function LoginScreen() {
             <p className="text-xs text-muted-foreground">Secure admin access</p>
           </div>
         </div>
-        {resetMode ? (
+        {signupMode ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setError("");
+              setSubmitting(true);
+              try {
+                await auth.signup({ orgId, orgName, email, password, displayName });
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Signup failed");
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label className="text-xs">Company</Label>
+              <Input value={orgName} onChange={(event) => setOrgName(event.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Org ID</Label>
+              <Input value={orgId} onChange={(event) => setOrgId(event.target.value)} className="h-9 font-mono text-sm" placeholder="acme" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Name</Label>
+              <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Work email</Label>
+              <Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="h-9 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Password</Label>
+              <Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="h-9 text-sm" />
+            </div>
+            {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+            <Button type="submit" className="w-full" disabled={submitting || !orgId || !orgName || !email || password.length < 12}>
+              {submitting ? "Creating account..." : "Create account"}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => { setSignupMode(false); setError(""); }}>
+              Back to sign in
+            </Button>
+          </form>
+        ) : resetMode ? (
           <form
             className="space-y-3"
             onSubmit={async (event) => {
@@ -381,6 +466,9 @@ function LoginScreen() {
           </Button>
           <Button type="button" variant="ghost" className="w-full" onClick={() => { setResetMode(true); setError(""); }}>
             Forgot password
+          </Button>
+          <Button type="button" variant="outline" className="w-full" onClick={() => { setSignupMode(true); setError(""); }}>
+            Create customer account
           </Button>
         </form>
         )}

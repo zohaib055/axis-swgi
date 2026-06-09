@@ -35,6 +35,10 @@ The app includes operational screens for onboarding customers, managing users,
 generating invite/reset tokens, managing API keys, and updating security
 settings. Billing/plan enforcement is intentionally outside this frontend pass.
 
+Public self-serve customers can create an account from the login screen. Signup
+creates a customer org, first org admin, and session cookie; the customer can
+then use Onboarding to register their first cluster.
+
 ## Local Development
 
 ```bash

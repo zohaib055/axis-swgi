@@ -164,6 +164,18 @@ class CommandCenterStore:
             session.flush()
             return _as_dict(user, USER_FIELDS)
 
+    def create_self_service_signup(self, *, org: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+        with session_scope(self.session_factory) as session:
+            organization = Organization(**org)
+            admin = User(**user)
+            session.add(organization)
+            session.add(admin)
+            session.flush()
+            return {
+                "org": _as_dict(organization, ORG_FIELDS),
+                "user": _as_dict(admin, USER_FIELDS),
+            }
+
     def get_user(self, user_id: str) -> dict[str, Any] | None:
         with session_scope(self.session_factory) as session:
             user = session.get(User, user_id)

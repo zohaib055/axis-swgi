@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RequirePermission } from "@/lib/auth";
+import { RequirePermission, useAuth } from "@/lib/auth";
 import { createOrganization, createUser, registerCluster } from "@/lib/command-center-api";
 
 export const Route = createFileRoute("/onboarding")({
@@ -17,13 +17,14 @@ export const Route = createFileRoute("/onboarding")({
 
 function Onboarding() {
   return (
-    <RequirePermission permission="org:write">
+    <RequirePermission permission="cluster:write">
       <OnboardingContent />
     </RequirePermission>
   );
 }
 
 function OnboardingContent() {
+  const auth = useAuth();
   const queryClient = useQueryClient();
   const [orgId, setOrgId] = useState("");
   const [orgName, setOrgName] = useState("");
@@ -33,11 +34,15 @@ function OnboardingContent() {
   const [clusterName, setClusterName] = useState("");
   const [runtime, setRuntime] = useState("kubernetes");
   const [install, setInstall] = useState<Record<string, string> | null>(null);
+  const isPlatformAdmin = auth.user?.role === "platform_admin";
+  const effectiveOrgId = isPlatformAdmin ? orgId : auth.user?.orgId || "";
   const mutation = useMutation({
     mutationFn: async () => {
-      await createOrganization({ orgId, displayName: orgName });
-      await createUser({ email: adminEmail, password: adminPassword, role: "org_admin", orgId });
-      const cluster = await registerCluster({ orgId, clusterId, displayName: clusterName, runtime });
+      if (isPlatformAdmin) {
+        await createOrganization({ orgId, displayName: orgName });
+        await createUser({ email: adminEmail, password: adminPassword, role: "org_admin", orgId });
+      }
+      const cluster = await registerCluster({ orgId: effectiveOrgId, clusterId, displayName: clusterName, runtime });
       return cluster.install;
     },
     onSuccess: (nextInstall) => {
@@ -48,7 +53,10 @@ function OnboardingContent() {
 
   return (
     <>
-      <PageHeader title="Customer onboarding" description="Create tenant, first admin, and cluster install configuration" />
+      <PageHeader
+        title={isPlatformAdmin ? "Customer onboarding" : "Cluster onboarding"}
+        description={isPlatformAdmin ? "Create tenant, first admin, and cluster install configuration" : "Register a cluster and generate install configuration for your org"}
+      />
       <div className="grid gap-4 p-6 lg:grid-cols-[1fr_1fr]">
         <Card className="p-4">
           <form
@@ -58,18 +66,23 @@ function OnboardingContent() {
               mutation.mutate();
             }}
           >
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold">Customer org</h2>
-              <div><Label>Org ID</Label><Input value={orgId} onChange={(event) => setOrgId(event.target.value)} placeholder="axis" required /></div>
-              <div><Label>Display name</Label><Input value={orgName} onChange={(event) => setOrgName(event.target.value)} placeholder="Axis" required /></div>
-            </section>
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold">First customer admin</h2>
-              <div><Label>Email</Label><Input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} type="email" required /></div>
-              <div><Label>Temporary password</Label><Input value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} type="password" minLength={12} required /></div>
-            </section>
+            {isPlatformAdmin && (
+              <>
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold">Customer org</h2>
+                  <div><Label>Org ID</Label><Input value={orgId} onChange={(event) => setOrgId(event.target.value)} placeholder="axis" required /></div>
+                  <div><Label>Display name</Label><Input value={orgName} onChange={(event) => setOrgName(event.target.value)} placeholder="Axis" required /></div>
+                </section>
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold">First customer admin</h2>
+                  <div><Label>Email</Label><Input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} type="email" required /></div>
+                  <div><Label>Temporary password</Label><Input value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} type="password" minLength={12} required /></div>
+                </section>
+              </>
+            )}
             <section className="space-y-3">
               <h2 className="text-sm font-semibold">First cluster</h2>
+              {!isPlatformAdmin && <div><Label>Organization</Label><Input value={effectiveOrgId} className="h-9 font-mono text-sm" disabled /></div>}
               <div><Label>Cluster ID</Label><Input value={clusterId} onChange={(event) => setClusterId(event.target.value)} placeholder="axis-prod-001" required /></div>
               <div><Label>Cluster name</Label><Input value={clusterName} onChange={(event) => setClusterName(event.target.value)} placeholder="Axis production" required /></div>
               <div>
@@ -87,7 +100,7 @@ function OnboardingContent() {
               </div>
             </section>
             {mutation.isError && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">Onboarding failed. Check duplicate org/user/cluster values.</div>}
-            <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Provisioning..." : "Provision customer"}</Button>
+            <Button type="submit" disabled={mutation.isPending || !effectiveOrgId}>{mutation.isPending ? "Provisioning..." : isPlatformAdmin ? "Provision customer" : "Register cluster"}</Button>
           </form>
         </Card>
         <Card className="p-4">

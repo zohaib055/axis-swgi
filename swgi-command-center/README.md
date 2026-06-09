@@ -63,6 +63,24 @@ startup.
 
 ## Production Onboarding Flow
 
+Public self-serve signup creates a customer org, first org admin, and browser
+session without SWGI manual provisioning:
+
+```bash
+curl -X POST http://localhost:8082/v1/auth/signup \
+  -H "content-type: application/json" \
+  -d '{
+    "org_id":"axis",
+    "org_name":"Axis",
+    "email":"admin@axis.example",
+    "password":"replace-with-a-long-random-password",
+    "display_name":"Axis Admin"
+  }'
+```
+
+After signup, the customer org admin can register their first cluster from the
+frontend Onboarding page.
+
 Platform admin creates an org:
 
 ```bash
@@ -169,6 +187,7 @@ poetry run pytest
 - `GET /v1/health`
 - `GET /readyz`
 - `POST /v1/auth/login`
+- `POST /v1/auth/signup`
 - `GET /v1/auth/me`
 - `POST /v1/auth/logout`
 - `POST /v1/auth/password-reset`

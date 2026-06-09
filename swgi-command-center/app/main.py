@@ -56,6 +56,7 @@ from .models import (
     PasswordChangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    SelfServiceSignupRequest,
     UsageResponse,
     UserActionTokenResponse,
     UserCreateRequest,
@@ -371,6 +372,40 @@ def login(req: LoginRequest, request: Request, response: Response) -> LoginRespo
     return LoginResponse(access_token=token, expires_at=session["expires_at"], user=UserResponse(**session["user"]))
 
 
+@app.post("/v1/auth/signup", response_model=LoginResponse)
+def signup(req: SelfServiceSignupRequest, request: Request, response: Response) -> LoginResponse:
+    token = generate_api_token("swgi_user")
+    user_id = str(uuid.uuid4())
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=settings.session_ttl_hours)
+    try:
+        created = store.create_self_service_signup(
+            org={
+                "org_id": req.org_id,
+                "display_name": req.org_name,
+                "plan_code": "starter",
+                "status": "active",
+            },
+            user={
+                "user_id": user_id,
+                "email": req.email,
+                "display_name": req.display_name or req.email,
+                "password_hash": hash_password(req.password),
+                "role": "org_admin",
+                "org_id": req.org_id,
+                "status": "active",
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Org or user already exists") from exc
+    session = store.create_user_session(user_id, token, expires_at)
+    if not session:
+        raise HTTPException(status_code=403, detail="User is not active")
+    auth = AuthContext(role="org_admin", token=token, org_id=req.org_id, user_id=user_id, email=req.email)
+    _audit(auth, action="self_service_signup", resource_type="org", resource_id=created["org"]["org_id"], org_id=req.org_id, request=request)
+    _set_auth_cookie(response, token, session["expires_at"])
+    return LoginResponse(access_token=token, expires_at=session["expires_at"], user=UserResponse(**session["user"]))
+
+
 @app.get("/v1/auth/me", response_model=UserResponse)
 def me(auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
     if auth.user_id:
@@ -653,7 +688,12 @@ def create_cluster(
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
 ) -> ClusterRegistrationResponse:
-    require_org_access(auth, org_id, write=True)
+    if auth.role == "platform_admin":
+        pass
+    elif auth.role == "org_admin" and auth.org_id == org_id:
+        pass
+    else:
+        require_org_access(auth, org_id, write=True)
     install_token = generate_api_token("swgi_operator")
     cluster = store.create_cluster({**req.model_dump(mode="json"), "org_id": org_id}, install_token)
     if not cluster:

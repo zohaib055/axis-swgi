@@ -39,7 +39,7 @@ type NavItem = {
 
 const operations: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Onboarding", url: "/onboarding", icon: Rocket, permission: "org:write" },
+  { title: "Onboarding", url: "/onboarding", icon: Rocket, permission: "cluster:write" },
   { title: "Organizations", url: "/organizations", icon: Building2, permission: "org:read" },
   { title: "Clusters", url: "/clusters", icon: Server, permission: "cluster:read" },
   { title: "Receipts", url: "/receipts", icon: ScrollText },
