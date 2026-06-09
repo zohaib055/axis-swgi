@@ -127,3 +127,26 @@ coupling runtime enforcement to commercial plumbing.
 
 Detailed GCP Marketplace architecture and validation notes live in
 `../../docs/google-cloud-marketplace`.
+
+## Intel Partner Boundary
+
+For Intel partner positioning, SWGI runs as the governance and evidence layer
+for Kubernetes workloads on Intel-based cloud, private cloud, and edge
+infrastructure.
+
+```text
+Customer Intel infrastructure
+  -> Intel Xeon worker nodes
+  -> optional Intel TDX capable node pools
+  -> Kubernetes / OpenShift / GKE / edge cluster
+  -> SWGI Operator and enforcement pods
+  -> signed Trust Receipts
+```
+
+Intel TDX attestation is treated as policy input and receipt metadata when a
+customer enables confidential workload controls. SWGI must continue to keep
+payloads in the customer environment while storing only metadata, hashes,
+decisions, receipts, audit records, and operator state in Command Center.
+
+Detailed Intel partner architecture and validation notes live in
+`../../docs/intel-partner`.
