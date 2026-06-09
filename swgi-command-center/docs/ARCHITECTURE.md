@@ -73,12 +73,12 @@ SQLAlchemy ORM sessions through `CommandCenterStore`.
 Current head:
 
 ```text
-0005_sales_readiness
+0006_partner_launch_integrations
 ```
 
 Current production tables include organizations, clusters, receipts, executions,
-operator events, audit logs, failed auth events, users, sessions, onboarding
-tokens, invite tokens, reset tokens, and API keys.
+operator events, marketplace usage events, audit logs, failed auth events,
+users, sessions, onboarding tokens, invite tokens, reset tokens, and API keys.
 
 ## API Stability
 
@@ -143,9 +143,9 @@ Customer Intel infrastructure
   -> signed Trust Receipts
 ```
 
-Intel TDX attestation is treated as policy input and receipt metadata when a
-customer enables confidential workload controls. SWGI must continue to keep
-payloads in the customer environment while storing only metadata, hashes,
+Intel TDX attestation is treated as validated policy input and receipt metadata
+when a customer enables confidential workload controls. SWGI must continue to
+keep payloads in the customer environment while storing only metadata, hashes,
 decisions, receipts, audit records, and operator state in Command Center.
 
 Detailed Intel partner architecture and validation notes live in

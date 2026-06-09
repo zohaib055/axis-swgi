@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from .modules.api_keys.schemas import ApiKeyCreateRequest, ApiKeyCreateResponse, ApiKeyResponse, ApiKeyRole
 from .modules.audit.schemas import AuditLogResponse
-from .modules.billing.schemas import PlanResponse, UsageResponse
+from .modules.billing.schemas import (
+    MarketplaceUsageEventResponse,
+    MarketplaceUsageReportRequest,
+    PlanResponse,
+    UsageResponse,
+)
 from .modules.clusters.schemas import (
     ClusterCreateRequest,
     ClusterRegistrationResponse,
@@ -51,6 +56,8 @@ __all__ = [
     "IntentDecisionResponse",
     "LoginRequest",
     "LoginResponse",
+    "MarketplaceUsageEventResponse",
+    "MarketplaceUsageReportRequest",
     "PasswordChangeRequest",
     "PasswordResetConfirmRequest",
     "PasswordResetRequest",

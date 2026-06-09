@@ -11,6 +11,9 @@ Registry image paths, product service name, and partner portal metadata.
 
 - `schema.yaml`: deploy-time parameter schema expected inside the deployer image
   at `/data/schema.yaml`.
+- `deployer.Dockerfile`: Marketplace deployer image scaffold.
+- `deploy.sh`: deployer entrypoint that renders templates and applies them.
+- `manifest.yaml`: package submission manifest scaffold for partner review.
 - `templates/application.yaml`: Marketplace Application custom resource.
 - `templates/operator.yaml`: customer-tenant Operator and enforcement scaffold.
 - `tests/README.md`: validation notes for the package.
@@ -45,8 +48,8 @@ ENABLE_CLOUD_MONITORING
 ## Submission Notes
 
 - Replace image placeholders with Marketplace Artifact Registry image paths.
-- Build a deployer image that copies this directory and exposes
-  `/data/schema.yaml`.
+- Build a deployer image from `deployer.Dockerfile`; it copies this directory
+  and exposes `/data/schema.yaml`.
 - Ensure the submitted image manifest includes the product service-name
   annotation required by Google Cloud Marketplace for GKE listings.
 - Keep billing and usage reporting credentials in the partner tenant unless the

@@ -1,0 +1,18 @@
+apiVersion: marketplace.cloud.google.com/v1alpha1
+kind: MarketplacePackage
+metadata:
+  name: swgi
+spec:
+  product:
+    name: swgi
+    displayName: SWGI Governance Enforcement
+  deployer:
+    image: ${DEPLOYER_IMAGE}
+    schema: /data/schema.yaml
+  images:
+    operator: ${OPERATOR_IMAGE}
+    enforcement: ${ENFORCEMENT_IMAGE}
+  notes:
+    - Replace all image placeholders with Google Marketplace Artifact Registry images before submission.
+    - Build the deployer with marketplace/google/deployer.Dockerfile.
+    - Keep usage reporting credentials in the partner tenant external reporter.

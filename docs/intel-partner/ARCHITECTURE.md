@@ -31,8 +31,8 @@ Customer Intel-based infrastructure
 - Supports customer-owned audit retention for regulated environments.
 - Provides platform admin visibility into customer integrations and cluster
   health without moving customer payloads into the partner tenant.
-- Can be extended to include Intel TDX attestation evidence where customers run
-  confidential containers or confidential VMs.
+- Includes Intel TDX attestation metadata where customers run confidential
+  containers or confidential VMs.
 
 ## Confidential Computing Boundary
 

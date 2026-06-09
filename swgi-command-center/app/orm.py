@@ -94,6 +94,29 @@ class UsageMetering(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class MarketplaceUsageEvent(Base):
+    __tablename__ = "marketplace_usage_events"
+
+    event_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.org_id"), nullable=False)
+    cluster_id: Mapped[str] = mapped_column(Text, nullable=False)
+    namespace: Mapped[str] = mapped_column(Text, nullable=False)
+    receipt_id: Mapped[str] = mapped_column(ForeignKey("trust_receipts.receipt_id"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, default="google-cloud-marketplace")
+    metric_name: Mapped[str] = mapped_column(Text, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit: Mapped[str] = mapped_column(Text, nullable=False, default="1")
+    usage_time: Mapped[datetime] = mapped_column(nullable=False)
+    usage_reporting_id: Mapped[str | None] = mapped_column(Text)
+    labels: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    report_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_reported_at: Mapped[datetime | None]
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class OperatorEvent(Base):
     __tablename__ = "operator_events"
 

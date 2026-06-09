@@ -59,6 +59,10 @@ execution status.
 Customer GKE / GKE Enterprise deployment details are documented in
 `../../docs/google-cloud-marketplace/DEPLOYMENT_GUIDE.md`.
 
+Google Marketplace usage reporting is intentionally run as a partner-tenant
+external worker. See `scripts/google_marketplace_reporter.py` for the reporting
+job that drains Command Center usage events and calls Google Service Control.
+
 ## Health Checks
 
 - `GET /healthz`: process health

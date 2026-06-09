@@ -35,4 +35,6 @@ def metadata_receipt(
         "identity": req.identity,
         "command_center_id": command_center_id,
         "runtime": "kubernetes",
+        "attestation": req.attestation,
+        "marketplace": req.marketplace,
     }

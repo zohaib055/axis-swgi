@@ -17,6 +17,7 @@ from .orm import (
     ControlPlaneSetting,
     ExecutionRequest,
     FailedAuthEvent,
+    MarketplaceUsageEvent,
     Namespace,
     OperatorEvent,
     Organization,
@@ -89,6 +90,26 @@ EXECUTION_FIELDS = (
     "completed_at",
     "error_code",
     "error_summary",
+    "created_at",
+    "updated_at",
+)
+MARKETPLACE_USAGE_FIELDS = (
+    "event_id",
+    "org_id",
+    "cluster_id",
+    "namespace",
+    "receipt_id",
+    "provider",
+    "metric_name",
+    "quantity",
+    "unit",
+    "usage_time",
+    "usage_reporting_id",
+    "labels",
+    "status",
+    "report_attempts",
+    "last_reported_at",
+    "last_error",
     "created_at",
     "updated_at",
 )
@@ -536,6 +557,29 @@ class CommandCenterStore:
                         billable=receipt["decision"] == "ALLOW",
                     )
                 )
+            exists_marketplace_event = session.get(MarketplaceUsageEvent, receipt["receipt_id"])
+            if receipt["decision"] in {"ALLOW", "MODIFY"} and not exists_marketplace_event:
+                session.add(
+                    MarketplaceUsageEvent(
+                        event_id=receipt["receipt_id"],
+                        org_id=receipt["org_id"],
+                        cluster_id=receipt["cluster_id"],
+                        namespace=receipt["namespace"],
+                        receipt_id=receipt["receipt_id"],
+                        metric_name="swgi_governed_execution",
+                        quantity=1,
+                        unit="1",
+                        usage_time=datetime.fromisoformat(receipt["created_at"]),
+                        usage_reporting_id=receipt.get("marketplace", {}).get("usage_reporting_id"),
+                        labels={
+                            "cloudmarketplace.googleapis.com/resource_name": receipt["workload_id"],
+                            "swgi_org_id": receipt["org_id"],
+                            "swgi_cluster_id": receipt["cluster_id"],
+                            "swgi_namespace": receipt["namespace"],
+                            "swgi_decision": receipt["decision"],
+                        },
+                    )
+                )
 
     def load_receipt(self, receipt_id: str) -> dict[str, Any] | None:
         with session_scope(self.session_factory) as session:
@@ -611,6 +655,44 @@ class CommandCenterStore:
                 "cluster_count": int(row.cluster_count or 0),
                 "namespace_count": int(row.namespace_count or 0),
             }
+
+    def list_marketplace_usage_events(
+        self,
+        *,
+        provider: str = "google-cloud-marketplace",
+        status: str | None = None,
+        org_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        stmt = select(MarketplaceUsageEvent).where(MarketplaceUsageEvent.provider == provider)
+        if status:
+            stmt = stmt.where(MarketplaceUsageEvent.status == status)
+        if org_id:
+            stmt = stmt.where(MarketplaceUsageEvent.org_id == org_id)
+        stmt = stmt.order_by(MarketplaceUsageEvent.usage_time.asc()).limit(max(1, min(limit, 500)))
+        with session_scope(self.session_factory) as session:
+            return [_as_dict(row, MARKETPLACE_USAGE_FIELDS) for row in session.scalars(stmt).all()]
+
+    def mark_marketplace_usage_event_reported(
+        self,
+        event_id: str,
+        *,
+        status: str,
+        last_error: str | None = None,
+    ) -> dict[str, Any] | None:
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            row = session.get(MarketplaceUsageEvent, event_id)
+            if not row:
+                return None
+            row.status = status
+            row.report_attempts += 1
+            row.last_error = last_error
+            row.updated_at = now
+            if status == "reported":
+                row.last_reported_at = now
+            session.flush()
+            return _as_dict(row, MARKETPLACE_USAGE_FIELDS)
 
     def list_clusters(self, org_id: str | None = None) -> list[dict[str, Any]]:
         stmt = select(Cluster)

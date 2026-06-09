@@ -16,7 +16,9 @@ validation for Kubernetes/GKE offerings.
 | Marketplace package scaffold | Ready | `marketplace/google` |
 | Application CR scaffold | Ready | `marketplace/google/templates/application.yaml` |
 | Deployer schema scaffold | Ready | `marketplace/google/schema.yaml` |
-| Billing / plan enforcement | Excluded by product scope | Metering boundary documented; implementation remains separate |
+| Usage metering event queue | Ready | `marketplace_usage_events` and `/v1/marketplace/google/*` APIs |
+| Google usage reporter | Ready | `swgi-command-center/scripts/google_marketplace_reporter.py` |
+| Billing / plan enforcement | Excluded by product scope | Usage reporting is integration-ready; plan enforcement remains separate |
 
 ## Marketplace Package Requirements
 
@@ -31,6 +33,8 @@ validation for Kubernetes/GKE offerings.
 - Final deployer image must include `/data/schema.yaml`.
 - Final deployer image must render the Kubernetes manifests and apply them to
   the selected GKE / GKE Enterprise cluster.
+- Partner tenant must export pending usage events and report them through the
+  Google Service Control API with production Marketplace credentials.
 - Final image manifests must include the Google Marketplace service-name
   annotation required for new or updated GKE listings.
 

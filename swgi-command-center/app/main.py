@@ -46,6 +46,8 @@ from .models import (
     IntentDecisionResponse,
     LoginRequest,
     LoginResponse,
+    MarketplaceUsageEventResponse,
+    MarketplaceUsageReportRequest,
     OperatorHeartbeatRequest,
     OperatorEventRequest,
     OrgCreateRequest,
@@ -757,6 +759,7 @@ def submit_intent(req: ExecutionIntentRequest, request: Request, auth: AuthConte
         "cluster_id": req.cluster_id,
         "namespace": req.namespace,
         "identity": req.identity,
+        "attestation": req.attestation,
         **req.policy_context,
     }
     decision, base_receipt = node.evaluate(
@@ -840,6 +843,77 @@ def usage(org_id: str | None = None, auth: AuthContext = Depends(get_auth_contex
     require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
     scoped_org_id = _org_filter_for(auth, org_id)
     return UsageResponse(**store.usage_summary(org_id=scoped_org_id))
+
+
+@app.get("/v1/marketplace/google/usage-events", response_model=list[MarketplaceUsageEventResponse])
+def google_marketplace_usage_events(
+    status: str | None = "pending",
+    org_id: str | None = None,
+    limit: int = 100,
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[MarketplaceUsageEventResponse]:
+    require_role(auth, {"platform_admin", "platform_viewer"})
+    events = store.list_marketplace_usage_events(
+        provider="google-cloud-marketplace",
+        status=status,
+        org_id=org_id,
+        limit=limit,
+    )
+    return [MarketplaceUsageEventResponse(**event) for event in events]
+
+
+@app.get("/v1/marketplace/google/service-control-operations")
+def google_marketplace_service_control_operations(
+    status: str | None = "pending",
+    org_id: str | None = None,
+    limit: int = 100,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, list[dict[str, Any]]]:
+    require_role(auth, {"platform_admin", "platform_viewer"})
+    events = store.list_marketplace_usage_events(
+        provider="google-cloud-marketplace",
+        status=status,
+        org_id=org_id,
+        limit=limit,
+    )
+    operations = []
+    for event in events:
+        operations.append(
+            {
+                "operationId": event["event_id"],
+                "operationName": event["metric_name"],
+                "consumerId": f"project:{event['usage_reporting_id']}" if event.get("usage_reporting_id") else None,
+                "startTime": event["usage_time"].isoformat(),
+                "endTime": event["usage_time"].isoformat(),
+                "metricValueSets": [
+                    {
+                        "metricName": event["metric_name"],
+                        "metricValues": [{"int64Value": event["quantity"]}],
+                    }
+                ],
+                "labels": event["labels"],
+            }
+        )
+    return {"operations": operations}
+
+
+@app.post("/v1/marketplace/google/usage-events/{event_id}/report", response_model=MarketplaceUsageEventResponse)
+def mark_google_marketplace_usage_event(
+    event_id: str,
+    req: MarketplaceUsageReportRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> MarketplaceUsageEventResponse:
+    require_role(auth, {"platform_admin"})
+    updated = store.mark_marketplace_usage_event_reported(
+        event_id,
+        status=req.status,
+        last_error=req.last_error,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Marketplace usage event not found")
+    _audit(auth, action="mark_marketplace_usage_event", resource_type="marketplace_usage_event", resource_id=event_id, request=request)
+    return MarketplaceUsageEventResponse(**updated)
 
 
 @app.get("/v1/clusters", response_model=list[ClusterResponse])

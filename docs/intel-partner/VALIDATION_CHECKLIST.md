@@ -13,7 +13,7 @@ solution-brief evidence.
 | Customer cluster onboarding | Ready | Command Center cluster registration |
 | Operator contract | Ready | `swgi-command-center/docs/OPERATOR_CONTRACT.md` |
 | Trust Receipt registry | Ready | Command Center Postgres metadata |
-| Confidential computing policy hooks | Planned extension | TDX evidence fields documented |
+| Confidential computing policy hooks | Ready | Intent `attestation` metadata validates Intel TDX evidence references |
 
 ## Infrastructure Validation
 
@@ -47,6 +47,33 @@ For confidential workload deployments, validate:
 - Policy can require verified confidential runtime.
 - Enforcement rejects workload execution when attestation is missing.
 - Trust Receipt records TDX verification result or an evidence reference.
+
+## Command Center API Validation
+
+Submit a governed intent with Intel attestation metadata:
+
+```bash
+curl -X POST "$COMMAND_CENTER_URL/v1/intents" \
+  -H "Authorization: Bearer $ORG_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+    "org_id":"customer-org",
+    "cluster_id":"intel-cluster-1",
+    "namespace":"swgi-system",
+    "workload_id":"confidential-workload",
+    "action":"kubernetes.apply",
+    "intent":"deploy confidential workload",
+    "attestation":{
+      "provider":"intel-tdx",
+      "verification_result":"verified",
+      "quote_hash":"sha256:example",
+      "runtime_class":"kata-tdx"
+    }
+  }'
+```
+
+The returned Trust Receipt must preserve the attestation metadata without
+storing customer payloads.
 
 ## Commands
 

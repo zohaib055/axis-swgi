@@ -82,6 +82,27 @@ provided by the Google Cloud Marketplace onboarding flow.
 - Keep Marketplace billing/metering credentials out of customer clusters unless
   Google Marketplace integration specifically requires customer-side reporting.
 
+## Usage Reporting
+
+Command Center queues Google Marketplace usage events in Postgres when governed
+executions are allowed or modified. A partner-tenant reporter sends those events
+to Google Service Control and marks each event as reported or failed.
+
+Run the reporter from the partner tenant:
+
+```bash
+cd swgi-command-center
+COMMAND_CENTER_URL="https://command-center.example" \
+ADMIN_API_TOKEN="$ADMIN_API_TOKEN" \
+GOOGLE_SERVICE_CONTROL_TOKEN="$GOOGLE_SERVICE_CONTROL_TOKEN" \
+GOOGLE_MARKETPLACE_SERVICE_NAME="swgi.endpoints.partner-project.cloud.goog" \
+python scripts/google_marketplace_reporter.py
+```
+
+`GOOGLE_SERVICE_CONTROL_TOKEN` must be issued for a Google service account that
+is authorized to report usage for the Marketplace service. Do not store this
+token in customer clusters.
+
 ## Rollback And Uninstall
 
 The customer tenant package must support:
