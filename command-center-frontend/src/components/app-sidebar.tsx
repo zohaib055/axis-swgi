@@ -9,6 +9,7 @@ import {
   Shield,
   Radio,
   KeyRound,
+  Users,
   FileSearch,
   Settings,
   Lock,
@@ -51,6 +52,7 @@ const governance: NavItem[] = [
 
 const admin: NavItem[] = [
   { title: "API Keys", url: "/api-keys", icon: KeyRound, permission: "api_key:write" },
+  { title: "Users", url: "/users", icon: Users, permission: "user:write" },
   { title: "Audit Logs", url: "/audit-logs", icon: FileSearch, permission: "audit:read" },
   { title: "Settings", url: "/settings", icon: Settings, permission: "settings:write" },
 ];

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
@@ -7,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Copy } from "lucide-react";
-import { useApiKeys } from "@/lib/command-center-api";
+import { createApiKey, revokeApiKey, rotateApiKey, useApiKeys, useOrganizations, type ApiKeyRole } from "@/lib/command-center-api";
 import { RequirePermission, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/api-keys")({
@@ -25,11 +27,50 @@ function ApiKeys() {
 }
 
 function ApiKeysContent() {
-  const [showGenerated, setShowGenerated] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [keyName, setKeyName] = useState("");
+  const [role, setRole] = useState<ApiKeyRole>("org_viewer");
+  const [orgId, setOrgId] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [generated, setGenerated] = useState<{ name: string; token: string } | null>(null);
   const { data: apiKeys } = useApiKeys();
+  const { data: orgs } = useOrganizations();
   const auth = useAuth();
+  const queryClient = useQueryClient();
   const canWriteKeys = auth.can("api_key:write");
-  const generated = "swgi_live_47fa92c1b3e84d7ca9018f7d3e2c1b6a9c5d4e3f";
+  const availableOrgs = auth.user?.orgId ? orgs.filter((org) => org.id === auth.user?.orgId) : orgs;
+  const selectedOrg = orgId || availableOrgs[0]?.id || auth.user?.orgId || "";
+  const createMutation = useMutation({
+    mutationFn: () => createApiKey({ orgId: selectedOrg, keyName, role, expiresAt: expiresAt || undefined }),
+    onSuccess: (created) => {
+      setGenerated({ name: created.name, token: created.token });
+      void queryClient.invalidateQueries({ queryKey: ["command-center", "api-keys"] });
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: (key: { org: string; id: string }) => revokeApiKey(key.org, key.id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["command-center", "api-keys"] }),
+  });
+  const rotateMutation = useMutation({
+    mutationFn: (key: { org: string; id: string }) => rotateApiKey(key.org, key.id),
+    onSuccess: (created) => {
+      setGenerated({ name: created.name, token: created.token });
+      setOpen(true);
+      void queryClient.invalidateQueries({ queryKey: ["command-center", "api-keys"] });
+    },
+  });
+
+  function resetDialog(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setKeyName("");
+      setRole("org_viewer");
+      setOrgId("");
+      setExpiresAt("");
+      setGenerated(null);
+      createMutation.reset();
+    }
+  }
 
   return (
     <>
@@ -37,36 +78,60 @@ function ApiKeysContent() {
         title="API Keys"
         description="Org-scoped credentials for the control plane API and in-cluster Operators"
         actions={canWriteKeys ? (
-          <Dialog onOpenChange={(o) => !o && setShowGenerated(false)}>
+          <Dialog open={open} onOpenChange={resetDialog}>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="mr-1 h-4 w-4" />New API key</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{showGenerated ? "API key created" : "Create API key"}</DialogTitle></DialogHeader>
-              {!showGenerated ? (
-                <div className="space-y-3 text-sm">
-                  <div><Label>Name</Label><Input placeholder="ci-deploy" /></div>
-                  <div><Label>Role</Label><Input placeholder="org_admin / org_viewer / operator" /></div>
-                  <div><Label>Expires</Label><Input type="date" /></div>
-                </div>
+              <DialogHeader><DialogTitle>{generated ? "API key created" : "Create API key"}</DialogTitle></DialogHeader>
+              {!generated ? (
+                <form
+                  className="space-y-3 text-sm"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    createMutation.mutate();
+                  }}
+                >
+                  <div><Label>Name</Label><Input value={keyName} onChange={(event) => setKeyName(event.target.value)} placeholder="ci-deploy" required /></div>
+                  <div>
+                    <Label>Organization</Label>
+                    <Select value={selectedOrg} onValueChange={setOrgId} disabled={availableOrgs.length <= 1}>
+                      <SelectTrigger><SelectValue placeholder="Select org" /></SelectTrigger>
+                      <SelectContent>
+                        {availableOrgs.map((org) => <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Role</Label>
+                    <Select value={role} onValueChange={(value) => setRole(value as ApiKeyRole)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="org_viewer">Org viewer</SelectItem>
+                        <SelectItem value="org_admin">Org admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div><Label>Expires</Label><Input value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} type="date" /></div>
+                  {createMutation.isError && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">API key could not be created.</div>}
+                  <DialogFooter>
+                    <Button type="submit" disabled={!selectedOrg || !keyName || createMutation.isPending}>
+                      {createMutation.isPending ? "Creating..." : "Create"}
+                    </Button>
+                  </DialogFooter>
+                </form>
               ) : (
                 <div className="space-y-3 text-sm">
                   <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
                     Copy this token now. For tenant isolation, the secret is shown only once and never stored in plaintext.
                   </div>
                   <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2 font-mono text-xs">
-                    <span className="flex-1 break-all">{generated}</span>
-                    <button className="text-muted-foreground hover:text-foreground"><Copy className="h-4 w-4" /></button>
+                    <span className="flex-1 break-all">{generated.token}</span>
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(generated.token)} className="text-muted-foreground hover:text-foreground"><Copy className="h-4 w-4" /></button>
                   </div>
+                  <DialogFooter><Button variant="outline" onClick={() => resetDialog(false)}>Done</Button></DialogFooter>
                 </div>
               )}
-              <DialogFooter>
-                {!showGenerated ? (
-                  <Button onClick={() => setShowGenerated(true)}>Create</Button>
-                ) : (
-                  <Button variant="outline">Done</Button>
-                )}
-              </DialogFooter>
             </DialogContent>
           </Dialog>
         ) : undefined}
@@ -90,8 +155,24 @@ function ApiKeysContent() {
                   <td className="px-4 py-2 text-right">
                     {canWriteKeys ? (
                       <>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs">Rotate</Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive">Revoke</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          disabled={rotateMutation.isPending || k.status !== "active"}
+                          onClick={() => rotateMutation.mutate({ org: k.org, id: k.id })}
+                        >
+                          Rotate
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-destructive"
+                          disabled={revokeMutation.isPending || k.status !== "active"}
+                          onClick={() => revokeMutation.mutate({ org: k.org, id: k.id })}
+                        >
+                          Revoke
+                        </Button>
                       </>
                     ) : (
                       <span className="text-muted-foreground">Read only</span>

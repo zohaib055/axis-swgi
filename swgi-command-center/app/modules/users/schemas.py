@@ -34,6 +34,18 @@ class UserCreateRequest(BaseModel):
         return value.strip().lower()
 
 
+class UserUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+    role: UserRole | None = None
+    org_id: str | None = None
+    status: UserStatus | None = None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str | None = Field(default=None, min_length=1, max_length=256)
+    new_password: str = Field(..., min_length=12, max_length=256)
+
+
 class UserResponse(BaseModel):
     user_id: str
     email: str

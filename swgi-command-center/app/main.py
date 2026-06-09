@@ -53,9 +53,11 @@ from .models import (
     OrgUpdateRequest,
     PlanResponse,
     ReceiptListResponse,
+    PasswordChangeRequest,
     UsageResponse,
     UserCreateRequest,
     UserResponse,
+    UserUpdateRequest,
 )
 from .receipts import metadata_receipt
 from .security import constant_time_equal, generate_api_token, hash_password, hash_token, verify_password
@@ -194,6 +196,19 @@ def _validate_user_role_scope(role: str, org_id: str | None) -> None:
         raise HTTPException(status_code=400, detail="Org-scoped users require org_id")
 
 
+def _require_user_management_scope(auth: AuthContext, *, target_role: str | None, target_org_id: str | None) -> None:
+    if auth.role == "platform_admin":
+        if target_role:
+            _validate_user_role_scope(target_role, target_org_id)
+        return
+    if auth.role != "org_admin":
+        raise HTTPException(status_code=403, detail="User management role required")
+    if not auth.org_id or target_org_id != auth.org_id:
+        raise HTTPException(status_code=403, detail="Org user management denied")
+    if target_role not in {None, "org_admin", "org_viewer"}:
+        raise HTTPException(status_code=403, detail="Org admins can only manage org admin/viewer users")
+
+
 def _user_response_for_auth(auth: AuthContext) -> UserResponse:
     return UserResponse(
         user_id=auth.user_id or "bootstrap",
@@ -325,9 +340,11 @@ def logout(auth: AuthContext = Depends(get_auth_context)) -> dict[str, str]:
 
 @app.post("/v1/users", response_model=UserResponse)
 def create_user(req: UserCreateRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
-    require_role(auth, {"platform_admin"})
-    _validate_user_role_scope(req.role, req.org_id)
-    if req.org_id and not store.get_org(req.org_id):
+    target_org_id = req.org_id
+    if auth.role == "org_admin":
+        target_org_id = auth.org_id
+    _require_user_management_scope(auth, target_role=req.role, target_org_id=target_org_id)
+    if target_org_id and not store.get_org(target_org_id):
         raise HTTPException(status_code=404, detail="Org not found")
     try:
         user = store.create_user(
@@ -337,7 +354,7 @@ def create_user(req: UserCreateRequest, request: Request, auth: AuthContext = De
                 "display_name": req.display_name,
                 "password_hash": hash_password(req.password),
                 "role": req.role,
-                "org_id": req.org_id,
+                "org_id": target_org_id,
                 "status": req.status,
             }
         )
@@ -357,6 +374,48 @@ def list_users(
     require_role(auth, {"platform_admin", "platform_viewer", "org_admin", "org_viewer"})
     scoped_org_id = _org_filter_for(auth, org_id)
     return [UserResponse(**user) for user in store.list_users(org_id=scoped_org_id, limit=limit, offset=offset)]
+
+
+@app.patch("/v1/users/{user_id}", response_model=UserResponse)
+def update_user(user_id: str, req: UserUpdateRequest, request: Request, auth: AuthContext = Depends(get_auth_context)) -> UserResponse:
+    existing = store.get_user(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    patch = req.model_dump(exclude_unset=True, mode="json")
+    target_role = patch.get("role", existing["role"])
+    target_org_id = patch.get("org_id", existing["org_id"])
+    if auth.role == "org_admin":
+        target_org_id = auth.org_id
+        patch["org_id"] = auth.org_id
+    _require_user_management_scope(auth, target_role=target_role, target_org_id=target_org_id)
+    if target_org_id and not store.get_org(target_org_id):
+        raise HTTPException(status_code=404, detail="Org not found")
+    user = store.update_user(user_id, patch)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    _audit(auth, action="update_user", resource_type="user", resource_id=user_id, org_id=user.get("org_id"), request=request)
+    return UserResponse(**user)
+
+
+@app.post("/v1/users/{user_id}/password")
+def change_user_password(
+    user_id: str,
+    req: PasswordChangeRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, str]:
+    existing = store.get_user(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    if auth.user_id == user_id:
+        if not req.current_password or not verify_password(req.current_password, existing["password_hash"]):
+            raise HTTPException(status_code=403, detail="Current password is required")
+    else:
+        _require_user_management_scope(auth, target_role=existing["role"], target_org_id=existing["org_id"])
+    if not store.update_user_password(user_id, hash_password(req.new_password)):
+        raise HTTPException(status_code=404, detail="User not found")
+    _audit(auth, action="change_user_password", resource_type="user", resource_id=user_id, org_id=existing.get("org_id"), request=request)
+    return {"status": "password_updated"}
 
 
 @app.post("/v1/orgs", response_model=OrgResponse)

@@ -14,6 +14,7 @@ export type Permission =
   | "cluster:read"
   | "cluster:write"
   | "api_key:write"
+  | "user:write"
   | "settings:write"
   | "audit:read"
   | "billing:read"
@@ -47,9 +48,9 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  platform_admin: ["org:read", "org:write", "cluster:read", "cluster:write", "api_key:write", "settings:write", "audit:read", "billing:read", "operator:read"],
+  platform_admin: ["org:read", "org:write", "cluster:read", "cluster:write", "api_key:write", "user:write", "settings:write", "audit:read", "billing:read", "operator:read"],
   platform_viewer: ["org:read", "cluster:read", "audit:read", "billing:read", "operator:read"],
-  org_admin: ["org:read", "cluster:read", "cluster:write", "api_key:write", "audit:read", "billing:read", "operator:read"],
+  org_admin: ["org:read", "cluster:read", "cluster:write", "api_key:write", "user:write", "audit:read", "billing:read", "operator:read"],
   org_viewer: ["org:read", "cluster:read", "audit:read", "billing:read", "operator:read"],
   operator: ["operator:read"],
 };

@@ -19,7 +19,15 @@ from .modules.receipts.schemas import (
     IntentDecisionResponse,
     ReceiptListResponse,
 )
-from .modules.users.schemas import LoginRequest, LoginResponse, UserCreateRequest, UserResponse, UserRole
+from .modules.users.schemas import (
+    LoginRequest,
+    LoginResponse,
+    PasswordChangeRequest,
+    UserCreateRequest,
+    UserResponse,
+    UserRole,
+    UserUpdateRequest,
+)
 
 __all__ = [
     "ApiKeyCreateRequest",
@@ -39,6 +47,7 @@ __all__ = [
     "IntentDecisionResponse",
     "LoginRequest",
     "LoginResponse",
+    "PasswordChangeRequest",
     "OperatorEventRequest",
     "OperatorHeartbeatRequest",
     "OrgCreateRequest",
@@ -51,4 +60,5 @@ __all__ = [
     "UserCreateRequest",
     "UserResponse",
     "UserRole",
+    "UserUpdateRequest",
 ]

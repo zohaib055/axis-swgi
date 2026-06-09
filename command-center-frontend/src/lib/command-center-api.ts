@@ -101,6 +101,40 @@ type ApiKeyResponse = {
   revoked_at?: string | null;
 };
 
+type ApiKeyCreateResponse = {
+  api_key: ApiKeyResponse;
+  token: string;
+};
+
+type UserResponse = {
+  user_id: string;
+  email: string;
+  display_name?: string | null;
+  role: string;
+  org_id?: string | null;
+  status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_login_at?: string | null;
+};
+
+export type UserRole = "platform_admin" | "platform_viewer" | "org_admin" | "org_viewer" | "operator";
+
+export type CreateApiKeyInput = {
+  orgId: string;
+  keyName: string;
+  role: ApiKeyRole;
+  expiresAt?: string;
+};
+
+export type CreateUserInput = {
+  email: string;
+  password: string;
+  displayName?: string;
+  role: UserRole;
+  orgId?: string | null;
+};
+
 const EMPTY_USAGE = {
   totalExecutions: 0,
   allow: 0,
@@ -113,18 +147,30 @@ const EMPTY_USAGE = {
   planLimit: 0,
 };
 
-async function commandCenterFetch<T>(path: string): Promise<T> {
+async function commandCenterFetch<T>(
+  path: string,
+  init: RequestInit & { json?: unknown } = {},
+): Promise<T> {
   const session = getStoredAuthSession();
-  const headers: HeadersInit = {
-    accept: "application/json",
-  };
+  const headers = new Headers(init.headers);
+  headers.set("accept", "application/json");
+  if (init.json !== undefined) {
+    headers.set("content-type", "application/json");
+  }
   if (session?.accessToken) {
-    headers.authorization = `Bearer ${session.accessToken}`;
+    headers.set("authorization", `Bearer ${session.accessToken}`);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, { headers });
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    body: init.json === undefined ? init.body : JSON.stringify(init.json),
+  });
   if (!response.ok) {
     throw new Error(`Command Center API ${response.status}: ${path}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }
@@ -307,6 +353,86 @@ export function useApiKeys() {
       status: key.status,
     }));
   }, []);
+}
+
+export function useUsers() {
+  return useCommandCenterQuery(["users"], async () => {
+    const rows = await commandCenterFetch<UserResponse[]>("/v1/users");
+    return rows.map((user) => ({
+      id: user.user_id,
+      email: user.email,
+      name: user.display_name || user.email,
+      role: user.role as UserRole,
+      org: user.org_id || "",
+      status: user.status,
+      created: formatDate(user.created_at),
+      lastLogin: relative(user.last_login_at),
+    }));
+  }, []);
+}
+
+export async function createApiKey(input: CreateApiKeyInput) {
+  const response = await commandCenterFetch<ApiKeyCreateResponse>(`/v1/orgs/${input.orgId}/api-keys`, {
+    method: "POST",
+    json: {
+      key_name: input.keyName,
+      role: input.role,
+      expires_at: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
+    },
+  });
+  return {
+    id: response.api_key.api_key_id,
+    org: response.api_key.org_id || "",
+    name: response.api_key.key_name,
+    role: response.api_key.role,
+    token: response.token,
+  };
+}
+
+export async function revokeApiKey(orgId: string, apiKeyId: string) {
+  return commandCenterFetch<{ status: string }>(`/v1/orgs/${orgId}/api-keys/${apiKeyId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function rotateApiKey(orgId: string, apiKeyId: string) {
+  const response = await commandCenterFetch<ApiKeyCreateResponse>(`/v1/orgs/${orgId}/api-keys/${apiKeyId}/rotate`, {
+    method: "POST",
+  });
+  return {
+    id: response.api_key.api_key_id,
+    org: response.api_key.org_id || "",
+    name: response.api_key.key_name,
+    role: response.api_key.role,
+    token: response.token,
+  };
+}
+
+export async function createUser(input: CreateUserInput) {
+  return commandCenterFetch<UserResponse>("/v1/users", {
+    method: "POST",
+    json: {
+      email: input.email,
+      password: input.password,
+      display_name: input.displayName || null,
+      role: input.role,
+      org_id: input.orgId || null,
+    },
+  });
+}
+
+export async function updateUserStatus(userId: string, status: "active" | "disabled") {
+  return commandCenterFetch<UserResponse>(`/v1/users/${userId}`, {
+    method: "PATCH",
+    json: { status },
+  });
+}
+
+export async function changeUserPassword(userId: string, newPassword: string) {
+  return commandCenterFetch<{ status: string }>(`/v1/users/${userId}/password`, {
+    method: "POST",
+    json: { new_password: newPassword },
+  });
 }
 
 function mapRuntime(runtime: string): Runtime {

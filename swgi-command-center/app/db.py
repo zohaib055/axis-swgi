@@ -162,6 +162,15 @@ class CommandCenterStore:
             session.flush()
             return _as_dict(user, USER_FIELDS)
 
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
+        with session_scope(self.session_factory) as session:
+            user = session.get(User, user_id)
+            if not user:
+                return None
+            data = _as_dict(user, USER_FIELDS)
+            data["password_hash"] = user.password_hash
+            return data
+
     def list_users(self, org_id: str | None = None, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         stmt = select(User)
         if org_id:
@@ -169,6 +178,39 @@ class CommandCenterStore:
         stmt = stmt.order_by(User.created_at.desc()).limit(max(1, min(limit, 500))).offset(max(0, offset))
         with session_scope(self.session_factory) as session:
             return [_as_dict(row, USER_FIELDS) for row in session.scalars(stmt).all()]
+
+    def update_user(self, user_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
+        with session_scope(self.session_factory) as session:
+            user = session.get(User, user_id)
+            if not user:
+                return None
+            for field in ("display_name", "role", "org_id", "status"):
+                if field in patch:
+                    setattr(user, field, patch[field])
+            user.updated_at = datetime.now(tz=timezone.utc)
+            session.flush()
+            return _as_dict(user, USER_FIELDS)
+
+    def update_user_password(self, user_id: str, password_hash: str, *, revoke_existing_sessions: bool = True) -> bool:
+        now = datetime.now(tz=timezone.utc)
+        with session_scope(self.session_factory) as session:
+            user = session.get(User, user_id)
+            if not user:
+                return False
+            user.password_hash = password_hash
+            user.updated_at = now
+            if revoke_existing_sessions:
+                sessions = session.scalars(
+                    select(UserSession).where(
+                        UserSession.user_id == user_id,
+                        UserSession.status == "active",
+                        UserSession.revoked_at.is_(None),
+                    )
+                ).all()
+                for row in sessions:
+                    row.status = "revoked"
+                    row.revoked_at = now
+            return True
 
     def create_user_session(self, user_id: str, token: str, expires_at: datetime) -> dict[str, Any] | None:
         token_hash = hash_token(token, settings.api_key_hash_secret)
