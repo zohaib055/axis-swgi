@@ -13,16 +13,21 @@ not OpenShift-only.
 ## Certification artifacts
 - `bundle/`: operator bundle scaffold for hosted pipeline and certification workflows
 - `bundle.Dockerfile`: bundle image build file
+- `docs/google-cloud-marketplace/`: GCP Marketplace architecture, deployment, and validation readiness
+- `marketplace/google/`: Google Cloud Marketplace Kubernetes package scaffold
 
 ## Start here
 - Command Center: `swgi-command-center/README.md`
 - OpenShift service: `swgi-openshift/README.md`
 - Core package: `swgi_core/README.md`
+- Google Cloud Marketplace: `docs/google-cloud-marketplace/README.md`
 
 ## Current structure
 ```text
   bundle/
   bundle.Dockerfile
+  docs/google-cloud-marketplace/
+  marketplace/google/
   swgi-command-center/
   swgi_core/
   swgi-openshift/

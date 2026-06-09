@@ -37,6 +37,28 @@ COMMAND_CENTER_URL
 Use a secrets manager for tokens and signing keys. Do not bake secrets into
 container images.
 
+## GCP Partner Tenant Runtime
+
+For Google Cloud Marketplace, run Command Center in the Axis Systems managed
+partner tenant:
+
+- Cloud Run or GKE for the Command Center API.
+- Cloud SQL for PostgreSQL.
+- Secret Manager or equivalent for tokens, cookie secrets, hash secrets, and
+  signing keys.
+- Artifact Registry for production images.
+- External HTTPS Load Balancer and Cloud Armor for public ingress.
+- Cloud Logging for JSON application logs.
+- Cloud Monitoring for health, readiness, latency, failed auth, and heartbeat
+  freshness alerts.
+
+Command Center remains the source of truth for customer orgs, users, roles,
+cluster registration, API keys, Trust Receipts, audit logs, operator events, and
+execution status.
+
+Customer GKE / GKE Enterprise deployment details are documented in
+`../../docs/google-cloud-marketplace/DEPLOYMENT_GUIDE.md`.
+
 ## Health Checks
 
 - `GET /healthz`: process health

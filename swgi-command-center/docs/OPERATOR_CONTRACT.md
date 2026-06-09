@@ -18,6 +18,10 @@ PUBLIC_SIGNING_KEY_PEM
 The Operator stores `OPERATOR_TOKEN` as a cluster secret and uses
 `PUBLIC_SIGNING_KEY_PEM` to verify Trust Receipts.
 
+For Google Cloud Marketplace deployments, these values are collected during the
+GKE / GKE Enterprise deployer flow and written into the customer namespace as a
+Kubernetes Secret or equivalent approved customer secret mechanism.
+
 ## Heartbeat
 
 ```http
@@ -73,6 +77,10 @@ Before applying any object, the Operator must verify:
 - recomputed payload hash matches `payload_hash`
 
 If any check fails, the Operator must reject the execution.
+
+For customer tenant deployments, rejection events should be visible in the
+customer's Cloud Logging pipeline and sent back to Command Center as operator
+events.
 
 ## Submit Execution Status
 

@@ -1,0 +1,31 @@
+apiVersion: app.k8s.io/v1beta1
+kind: Application
+metadata:
+  name: ${APP_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: swgi
+    app.kubernetes.io/instance: ${APP_NAME}
+    app.kubernetes.io/part-of: swgi
+spec:
+  descriptor:
+    type: SWGI Governance Enforcement
+    version: "0.1.0"
+    description: SWGI Operator and enforcement layer for customer GKE clusters.
+    maintainers:
+      - name: Axis Systems
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: ${APP_NAME}
+      app.kubernetes.io/part-of: swgi
+  componentKinds:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: Secret
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding

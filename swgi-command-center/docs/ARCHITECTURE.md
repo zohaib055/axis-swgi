@@ -73,8 +73,12 @@ SQLAlchemy ORM sessions through `CommandCenterStore`.
 Current head:
 
 ```text
-0003_prod_hardening
+0005_sales_readiness
 ```
+
+Current production tables include organizations, clusters, receipts, executions,
+operator events, audit logs, failed auth events, users, sessions, onboarding
+tokens, invite tokens, reset tokens, and API keys.
 
 ## API Stability
 
@@ -94,3 +98,32 @@ Operator
   -> applies Kubernetes/OpenShift action
   -> reports status/events
 ```
+
+## Google Cloud Marketplace Boundary
+
+For Google Cloud Marketplace, SWGI uses a split-tenant architecture:
+
+```text
+Axis Systems partner tenant
+  -> Google Cloud Marketplace listing and metering boundary
+  -> Command Center
+  -> Postgres Trust Receipt registry
+  -> Cloud Logging / Cloud Monitoring
+
+Customer tenant
+  -> Cloud Armor
+  -> External HTTPS Load Balancer
+  -> GKE / GKE Enterprise / Anthos
+  -> SWGI Operator and enforcement pods
+  -> customer workloads
+  -> optional customer-owned Cloud Storage archive
+```
+
+Customer workloads and Kubernetes permissions remain in the customer tenant.
+Command Center stores metadata, hashes, decisions, receipts, audit records, and
+operator status. Billing and plan enforcement are intentionally isolated behind
+the Marketplace metering boundary so the product can run self-serve without
+coupling runtime enforcement to commercial plumbing.
+
+Detailed GCP Marketplace architecture and validation notes live in
+`../../docs/google-cloud-marketplace`.
